@@ -1,5 +1,5 @@
 import 'dart:convert' as dc;
-import "dart:ui";
+import "dart:ui" show Color;
 import 'model.dart' as model;
 
 import 'general_enums.dart' hide ApiQueryParameter;
@@ -2464,4 +2464,245 @@ enum TagCategory {
             "This value is not valid. Cannot use TagCategory._error."),
         _ => throw UnsupportedError("type not supported"),
       };
+}
+
+/// Database files contain upwards of a million entries. In cases where the 
+/// [TagDbEntry.id] is not important, this class may be used to minimize the 
+/// memory and performance cost of parsing and storing a large number of entries.
+class TagDbEntrySlim implements Comparable<TagDbEntrySlim> {
+  /// <tag display name>,
+  final String name;
+
+  /// <numeric category id>,
+  final TagCategory category;
+
+  /// <# matching visible posts>,
+  final int postCount;
+
+  const TagDbEntrySlim({
+    required this.name,
+    required this.category,
+    required this.postCount,
+  });
+  TagDbEntrySlim.fromJson(Map<String, dynamic> json)
+      : name = json["name"] as String,
+        category = json["category"] as TagCategory,
+        postCount = json["post_count"] as int;
+  Map<String, dynamic> toJson() => {
+        "name": name,
+        "category": category.index,
+        "post_count": postCount,
+      };
+  TagDbEntrySlim.fromCsv(String csv)
+      : name = csv.contains('"')
+            ? csv.substring(csv.indexOf('"'), csv.lastIndexOf('"') + 1)
+            : csv.split(",")[1],
+        category = TagCategory.values[int.parse(csv.contains('"')
+            ? csv.split(",")[csv.split(",").length - 2]
+            : csv.split(",")[2])],
+        postCount = int.parse(csv.split(",").last);
+  static const csvHeader = "id,name,category,post_count";
+
+  /// Database archives have upwards of a million entries. Use Flutter's
+  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
+  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
+  static List<TagDbEntrySlim> parseCsv(String csv) => (csv.split("\n")
+        ..removeAt(0)
+        ..removeLast())
+      .map(TagDbEntrySlim.fromCsv)
+      .toList();
+  @override
+  int compareTo(TagDbEntrySlim other) => other.postCount - postCount;
+  // int compareTo(TagDbEntrySlim other) =>
+  //     (other.postCount - (other.postCount % 5)) - (postCount - postCount % 5);
+  static List<String> rootParse(String e) {
+    var t = e.split(",");
+    if (e.contains('"')) {
+      t = [
+        t[0],
+        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
+        t[t.length - 2],
+        t.last
+      ];
+    }
+    // if (t.length == 5) t = [t[0], t[1] + t[2], t[3], t[4]];
+    if (t.length == 5) throw StateError("Shouldn't be possible");
+    return t;
+  }
+}
+
+/* class TagDbEntry implements TagDbEntrySlim {
+  /// <numeric tag id>,
+  final int id;
+
+  /// <tag display name>,
+  @override
+  final String name;
+
+  /// <numeric category id>,
+  @override
+  final TagCategory category;
+
+  /// <# matching visible posts>,
+  @override
+  final int postCount;
+
+  const TagDbEntry({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.postCount,
+  });
+  TagDbEntry.fromJson(Map<String, dynamic> json)
+      : id = json["id"] as int,
+        name = json["name"] as String,
+        category = json["category"] as TagCategory,
+        postCount = json["post_count"] as int;
+  @override
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "name": name,
+        "category": category.index,
+        "post_count": postCount,
+      };
+  TagDbEntry.fromCsv(String csv)
+      : id = int.parse(csv.split(",").first),
+        name = csv.contains('"')
+            ? csv.substring(csv.indexOf('"'), csv.lastIndexOf('"') + 1)
+            : csv.split(",")[1],
+        category = TagCategory.values[int.parse(csv.contains('"')
+            ? csv.split(",")[csv.split(",").length - 2]
+            : csv.split(",")[2])],
+        postCount = int.parse(csv.split(",").last);
+  String toCsv() => "$id,$name,${category.index},$postCount";
+  static const csvHeader = "id,name,category,post_count";
+
+  /// Database archives have upwards of a million entries. Use Flutter's
+  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
+  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
+  static List<TagDbEntry> parseCsv(String csv) => (csv.split("\n")
+        ..removeAt(0)
+        ..removeLast())
+      .map(TagDbEntry.fromCsv)
+      .toList();
+  static List<String> rootParse(String e) {
+    var t = e.split(",");
+    if (e.contains('"')) {
+      t = [
+        t[0],
+        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
+        t[t.length - 2],
+        t.last
+      ];
+    }
+    // if (t.length == 5) t = [t[0], t[1] + t[2], t[3], t[4]];
+    if (t.length == 5) throw StateError("Shouldn't be possible");
+    return t;
+  }
+} */
+class TagDbEntry extends TagDbEntrySlim {
+  /// <numeric tag id>,
+  final int id;
+
+  const TagDbEntry({
+    required this.id,
+    required super.name,
+    required super.category,
+    required super.postCount,
+  });
+  TagDbEntry.fromJson(super.json)
+      : id = json["id"] as int,
+        super.fromJson();
+  @override
+  Map<String, dynamic> toJson() => super.toJson()..addAll({"id": id});
+  TagDbEntry.fromCsv(super.csv)
+      : id = int.parse(csv.split(",").first),
+        super.fromCsv();
+  String toCsv() => "$id,$name,${category.index},$postCount";
+  static const csvHeader = "id,name,category,post_count";
+
+  /// Database archives have upwards of a million entries. Use Flutter's
+  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
+  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
+  static List<TagDbEntry> parseCsv(String csv) => (csv.split("\n")
+        ..removeAt(0)
+        ..removeLast())
+      .map(TagDbEntry.fromCsv)
+      .toList();
+  
+  static List<String> rootParse(String e) {
+    var t = e.split(",");
+    if (e.contains('"')) {
+      t = [
+        t[0],
+        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
+        t[t.length - 2],
+        t.last
+      ];
+    }
+    if (t.length == 5) throw StateError("Shouldn't be possible");
+    return t;
+  }
+}
+
+/// https://e621.wiki/#operations-Tags-searchTags
+class Tag extends TagDbEntry {
+  // /// <numeric tag id>,
+  // final int id;
+
+  // /// <tag display name>,
+  // final String name;
+
+  // /// <# matching visible posts>,
+  // final int postCount;
+
+  /// <space-delimited list of tags>,???
+  final List<String> relatedTags;
+
+  /// <ISO8601 timestamp>,
+  final DateTime? relatedTagsUpdatedAt;
+
+  // /// <numeric category id>,
+  // final TagCategory category;
+
+  /// <boolean>,
+  final bool isLocked;
+
+  /// <ISO8601 timestamp>,
+  final DateTime createdAt;
+
+  /// <ISO8601 timestamp>
+  final DateTime updatedAt;
+
+  Tag({
+    required super.id,
+    required super.name,
+    required super.postCount,
+    required this.relatedTags,
+    required this.relatedTagsUpdatedAt,
+    required super.category,
+    required this.isLocked,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  Tag.fromJson(super.json)
+      : relatedTags = (json["related_tags"] as List).cast<String>(),
+        relatedTagsUpdatedAt = json["related_tags_updated_at"] as DateTime?,
+        isLocked = json["is_locked"] as bool,
+        createdAt = json["created_at"] as DateTime,
+        updatedAt = json["updated_at"] as DateTime,
+        super.fromJson();
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      // "id": id,
+      // "name": name,
+      // "post_count": postCount,
+      "related_tags": relatedTags,
+      "related_tags_updated_at": relatedTagsUpdatedAt,
+      // "category": category.index,
+      "is_locked": isLocked,
+      "created_at": createdAt,
+      "updated_at": updatedAt,
+    });
 }
