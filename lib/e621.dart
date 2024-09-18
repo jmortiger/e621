@@ -4,3 +4,4 @@ library;
 
 export 'e621_api.dart';
 export 'e621_models.dart';
+export 'src/colors.dart';

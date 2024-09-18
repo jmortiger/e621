@@ -1,13 +1,15 @@
 name: e621
 description: A wrapper for the e621 api, complete with models that handle JSON responses and built-in rate-limiting.
 version: 1.0.0
-# repository: https://github.com/my_org/my_repo
+# repository: https://github.com/<ORG>/e621-api
 
 environment:
   sdk: ^3.4.3
 
 # Add regular dependencies here.
 dependencies:
+  flutter:
+    sdk: flutter
   http: ^1.2.2
   # path: ^1.8.0
 
