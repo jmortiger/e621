@@ -1,7 +1,7 @@
 import 'package:http/http.dart';
 import 'package:j_util/web_full.dart';
-import 'package:j_util/e621.dart';
-import 'package:j_util/e621_api.dart' as api;
+import 'package:e621/e621.dart';
+import 'package:e621/e621_api.dart' as api;
 
 import 'dev_data.dart';
 import 'package:test/test.dart';

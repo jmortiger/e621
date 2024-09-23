@@ -30,8 +30,19 @@ final class AccessData {
 
 class BaseCredentials {
   static const headerKey = "Authorization";
-  void addToHeadersMap(Map<String, dynamic> headers) =>
-      headers[BaseCredentials.headerKey] = headerValue;
+  MapEntry<String, String> get header => MapEntry(headerKey, headerValue);
+  Map<String, dynamic> addTo(Map<String, dynamic> headers) {
+    headers[headerKey] = headerValue;
+    return headers;
+  }
+  Map<String, String> addToTyped(Map<String, String> headers) {
+    headers[headerKey] = headerValue;
+    return headers;
+  }
+  @Deprecated("Use addTo")
+  Map<String, dynamic> addToHeadersMap(Map<String, dynamic> headers) =>
+      addTo(headers);
+
   final String headerValue;
   BaseCredentials({
     required String identifier,

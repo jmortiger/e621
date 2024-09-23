@@ -2,7 +2,7 @@
 //@TestOn()
 library;
 
-export 'src/e621.dart' hide numerals;
+export 'src/e621.dart';
 export 'src/credentials.dart';
 export 'src/middleware.dart';
 export 'src/search_enums.dart';

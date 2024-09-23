@@ -4,17 +4,6 @@ import 'credentials.dart';
 import 'general_enums.dart' as ge;
 import 'search_enums.dart' as se;
 
-// #region Tag parsing
-/// https://e621.net/help/tags
-/// 1 tag and 0 posts w/ `%` (`%82%b5%82%cc%82%e8%82%a8%82%f1_short_hair`), 0 tags w/ `#`.
-const disallowedInTagName = '%,#\\*';
-const alphabetLowerAndUpper =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-const numerals = "0123456789";
-const e6ValidMetaTagCharacters =
-    "$alphabetLowerAndUpper$numerals:_!.-/*\"\"<>=~";
-// #endregion Tag parsing
-
 // #region URI
 const hostNameSfw = "e926.net";
 const hostNameNsfw = "e621.net";
