@@ -59,7 +59,7 @@ http.Request _baseInitRequestCredentialsRequired({
       path: path,
       queryParameters: _prepareQueryParametersSafe(queryParameters));
   var req = http.Request(method, uri);
-  _getValidCredentials(credentials).addToHeadersMap(req.headers);
+  _getValidCredentials(credentials).addTo(req.headers);
   return req;
 }
 
@@ -73,7 +73,7 @@ http.Request _baseInitRequestCredentialsOptional({
       path: path,
       queryParameters: _prepareQueryParametersSafe(queryParameters));
   var req = http.Request(method, uri);
-  (credentials ?? activeCredentials)?.addToHeadersMap(req.headers);
+  (credentials ?? activeCredentials)?.addTo(req.headers);
   return req;
 }
 
@@ -829,7 +829,7 @@ http.Request initSearchTagImplicationsRequest({
 /// [Listing](https://e621.net/wiki_pages/2425#favorites_listing)
 /// The base URL is `/favorites.json` called with `GET`.
 ///
-/// * `user_id` Optional, the user to fetch the favorites from. If not specified will fetch the favorites from the currently authorized user.
+/// * `user_id` Optional, the user to fetch the favorites from. If not specified will fetch the favorites from the currently authorized user. You must be the user or `Moderator+` if the user has their favorites hidden.
 /// * `limit` How many posts you want to retrieve. There is a hard limit of 320 posts per request. Defaults to the value set in user preferences.
 /// * `page` The page that will be returned. Can also be used with a or b + post_id to get the posts after or before the specified post ID. For example a13 gets every post after post_id 13 up to the limit. ??This overrides any ordering meta-tag, order:id_desc is always used instead.??
 ///
@@ -964,9 +964,11 @@ http.Request initListFavoritesWithCredentialsRequest({
 /// * `search[creator_name]` The creator's name. Exact match.
 /// * `search[creator_id]` The creator's user id.
 /// * `search[is_active]` Can be: true, false
-/// {@template limitAndPageParams}
-/// * `limit` Limits the amount of items returned to the number specified.
-/// * `page` The page that will be returned. Can also be used with a or b + item_id to get the items after or before the specified ID. For example a13 gets every item after item_id 13 up to the limit. ??This overrides any ordering meta-tag, order:id_desc is always used instead.??
+/// {@template limitRoot}
+/// * `limit` The maximum number of results to return. Between 0 and 320.
+/// {@endtemplate}
+/// {@template pageRoot}
+/// * `page` The page that will be returned. Between 1 and 750. Can also be used with a or b + item_id to get the items after or before the specified ID. For example a13 gets every item after item_id 13 up to the limit.
 /// {@endtemplate}
 ///
 /// This returns a JSON array, for each note it returns:
@@ -1299,6 +1301,38 @@ http.Request initRemoveFromSetRequest(
       },
     );
 
+/// `/post_sets/for_select.json` `GET`
+///
+/// You must be the owner of the set, a maintainer (if public), or Admin+.
+///
+/// Responses:
+/// * `200` See ModifiablePostSets.
+/// * `403` Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+/// * `422` Invalid Input Data
+/// ```
+/// {
+///   "errors": {
+///     "key": [
+///       "the error"
+///     ]
+///   }
+/// }
+/// ```
+http.Request initGetModifiableSetsRequest({
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/post_sets/for_select.json",
+      method: "GET",
+      credentials: credentials,
+    );
+
 /// `/post_sets/$setId/update_posts.json` `POST`
 /// * `post_ids_string[]` space separated list (i think) of ALL posts in set
 ///
@@ -1505,6 +1539,379 @@ http.Request initRevertPoolRequest(
       credentials: credentials,
     );
 // #endregion Pools
+// #region Comments
+/// The base URL is `/comments.json` called with `GET`.
+///
+/// For searching comments, group_by=comment must be set. When no results are found, an object with a comments key is returned.
+///
+/// {@macro limitRoot}
+/// {@macro pageRoot}
+/// * `search[id]` Search for a specific id ??you can search for multiple IDs at once, separated by commas??.
+/// * `search[ip_addr]` Must be Admin+ to use. See [postgres' documentation](https://www.postgresql.org/docs/9.3/functions-net.html) for information on how this is parsed. Specifically, "is contained within or equals" (<<=).
+/// {@template orderRoot}
+/// * `search[order]` The order that items should be returned, can be any of:
+/// {@endtemplate}
+/// `id_asc`, `id_desc`, `status`, `status_desc`, `updated_at_desc`. If not specified it orders by ???
+/// * `group_by` Can be either: `comment`, or `post`.
+/// * `search[body_matches]`
+/// * `search[post_id]` Search for items based on post ID. Accepts a comma separated list.
+/// * `search[post_tags_matches]` Search by post tags.
+/// * `search[post_note_updater_name]`
+/// * `search[post_note_updater_id]`
+/// * `search[creator_name]` Search for items based on creator name.
+/// * `search[creator_id]` Search for items based on creator ID.
+/// * `search[is_sticky]` If the pool is sticky or hidden. (True/False)
+/// * `search[is_hidden]` If the pool is hidden or hidden. (True/False) Only usable by Moderator+
+/// * `search[do_not_bump_post]` (True/False)
+///
+/// This returns a JSON array, for each item it returns:
+/// {@template jsonComment}
+/// * `id` `number`
+/// * `created_at` `date-time`
+/// * `post_id` `number`
+/// * `creator_id` `number`
+/// * `body` `string`
+/// * `score` `number`
+/// * `updated_at` `date-time`
+/// * `updater_id` `number`
+/// * `do_not_bump_post` `boolean deprecated`
+/// * `is_hidden` `boolean`
+/// * `is_sticky` `boolean`
+/// * `warning_type` `string | null ("warning","record","ban")`
+/// * `warning_user_id` `number | null`
+/// * `creator_name` `string`
+/// * `updater_name` `string`
+/// {@endtemplate}
+http.Request initSearchCommentsRequest({
+  int? limit,
+  String? page,
+  List<int>? searchId,
+  String? searchIpAddr,
+  se.CommentOrder? searchOrder,
+  se.CommentGrouping? groupBy,
+  String? searchBodyMatches,
+  String? searchPostId,
+  String? searchPostTagsMatches,
+  String? searchPostNoteUpdaterName,
+  String? searchPostNoteUpdaterId,
+  String? searchCreatorName,
+  int? searchCreatorId,
+  bool? searchIsSticky,
+  bool? searchIsHidden,
+  bool? searchDoNotBumpPost,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+      path: "/comments.json",
+      queryParameters: {
+        if (limit != null) "limit": limit,
+        if (page != null) "page": page,
+        if (searchId != null) "search[id]": searchId,
+        if (searchIpAddr != null) "search[ip_addr]": searchIpAddr,
+        if (searchOrder != null) "search[order]": searchOrder,
+        if (groupBy != null) "group_by": groupBy,
+        if (searchBodyMatches != null)
+          "search[body_matches]": searchBodyMatches,
+        if (searchPostId != null) "search[post_id]": searchPostId,
+        if (searchPostTagsMatches != null)
+          "search[post_tags_matches]": searchPostTagsMatches,
+        if (searchPostNoteUpdaterName != null)
+          "search[post_note_updater_name]": searchPostNoteUpdaterName,
+        if (searchPostNoteUpdaterId != null)
+          "search[post_note_updater_id]": searchPostNoteUpdaterId,
+        if (searchCreatorName != null)
+          "search[creator_name]": searchCreatorName,
+        if (searchCreatorId != null) "search[creator_id]": searchCreatorId,
+        if (searchIsSticky != null) "search[is_sticky]": searchIsSticky,
+        if (searchIsHidden != null) "search[is_hidden]": searchIsHidden,
+        if (searchDoNotBumpPost != null)
+          "search[do_not_bump_post]": searchDoNotBumpPost,
+      },
+      credentials: credentials,
+      method: "GET",
+    );
+
+/// The base URL is `/comments/$id.json` called with `GET`.
+///
+/// If the comment is hidden, you must be the creator or Moderator+ to see it.
+///
+/// * `id` The ID of the comment.
+///
+/// Responses:
+///
+/// 200 Success {@macro jsonComment}
+http.Request initGetCommentRequest({
+  required int id,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+      path: "/comments/$id.json",
+      credentials: credentials,
+      method: "GET",
+    );
+
+/// The base URL is `/comments.json` called with `POST`.
+///
+/// * `comment[body]`
+/// * `comment[post_id]`
+/// * `comment[do_not_bump_post]`
+/// * `comment[is_sticky]` Only usable for Janitor+
+/// * `comment[is_hidden]` Only usable for Moderator+
+///
+/// Responses:
+/// 201 Success
+/// {@macro jsonComment}
+///
+/// 403 Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// 422 Invalid Input Data
+/// ```
+/// {
+///   "errors": {
+///     "key": [
+///       "the error"
+///     ]
+///   }
+/// }
+/// ```
+http.Request initCreateCommentsRequest({
+  required String commentBody,
+  required int commentPostId,
+  bool? commentDoNotBumpPost,
+  bool? commentIsSticky,
+  bool? commentIsHidden,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/comments.json",
+      queryParameters: {
+        "comment[body]": commentBody,
+        "comment[post_id]": commentPostId,
+        if (commentDoNotBumpPost != null)
+          "comment[do_not_bump_post]": commentDoNotBumpPost,
+        if (commentIsSticky != null) "comment[is_sticky]": commentIsSticky,
+        if (commentIsHidden != null) "comment[is_hidden]": commentIsHidden,
+      },
+      credentials: credentials,
+      method: "POST",
+    );
+
+/// The base URL is `/comments/$id.json` called with `PATCH`.
+///
+/// You must be the creator of the comment, or Admin+ to edit. Marked comments cannot be edited.
+///
+/// * `id` The ID of the comment.
+/// * `comment[body]`
+/// * `comment[is_sticky]` Only usable for Janitor+
+/// * `comment[is_hidden]` Only usable for Moderator+
+///
+/// Responses:
+/// 204 Success ??No body??
+///
+/// 403 Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// 404 Not Found
+/// ```
+/// {
+///   "success": false,
+///   "reason": "not found"
+/// }
+/// ```
+///
+/// 422 Invalid Input Data
+/// ```
+/// {
+///   "errors": {
+///     "key": [
+///       "the error"
+///     ]
+///   }
+/// }
+/// ```
+http.Request initUpdateCommentRequest(
+  int id, {
+  String? commentBody,
+  bool? commentIsSticky,
+  bool? commentIsHidden,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/comments/$id.json",
+      queryParameters: {
+        if (commentBody != null) "comment[body]": commentBody,
+        if (commentIsSticky != null) "comment[is_sticky]": commentIsSticky,
+        if (commentIsHidden != null) "comment[is_hidden]": commentIsHidden,
+      },
+      credentials: credentials,
+      method: "PATCH",
+    );
+
+/// The base URL is `/comments/$id.json` called with `DELETE`.
+///
+/// You must be Admin+.
+///
+/// * `id` The ID of the comment.
+///
+/// Responses:
+/// 204 Success ??No body??
+///
+/// 403 Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// 404 Not Found
+/// ```
+/// {
+///   "success": false,
+///   "reason": "not found"
+/// }
+/// ```
+///
+/// 422 Invalid Input Data
+/// ```
+/// {
+///   "errors": {
+///     "key": [
+///       "the error"
+///     ]
+///   }
+/// }
+/// ```
+http.Request initDeleteCommentRequest(
+  int id, {
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/comments/$id.json",
+      credentials: credentials,
+      method: "DELETE",
+    );
+
+/// The base URL is `/comments/$id/hide.json` called with `POST`.
+///
+/// You must be the creator or Moderator+.
+///
+/// * `id` The ID of the comment.
+///
+/// Responses:
+/// 201 Success
+/// {@macro jsonComment}
+///
+/// 403 Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// 404 Not Found
+/// ```
+/// {
+///   "success": false,
+///   "reason": "not found"
+/// }
+/// ```
+http.Request initHideCommentRequest(
+  int id, {
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/comments/$id/hide.json",
+      credentials: credentials,
+      method: "POST",
+    );
+
+/// The base URL is `/comments/$id/unhide.json` called with `POST`.
+///
+/// You must be Moderator+.
+///
+/// * `id` The ID of the comment.
+///
+/// Responses:
+/// 201 Success
+/// {@macro jsonComment}
+///
+/// 403 Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// 404 Not Found
+/// ```
+/// {
+///   "success": false,
+///   "reason": "not found"
+/// }
+/// ```
+http.Request initUnhideCommentRequest(
+  int id, {
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/comments/$id/unhide.json",
+      credentials: credentials,
+      method: "POST",
+    );
+
+/// The base URL is `/comments/$id/warning.json` called with `POST`.
+///
+/// You must be Moderator+.
+///
+/// * `id` The ID of the comment.
+/// * `record_type`
+///
+/// Responses:
+/// 201 Success
+/// See DTextResponse
+///
+/// 403 Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// 404 Not Found
+/// ```
+/// {
+///   "success": false,
+///   "reason": "not found"
+/// }
+/// ```
+http.Request initWarnCommentRequest(
+  int id,
+  ge.WarningType recordType, {
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/comments/$id/warning.json",
+      queryParameters: {"record_type": recordType.query},
+      credentials: credentials,
+      method: "POST",
+    );
+
+// #endregion Comments
 // TODO: Post Versions endpoint
 // #region Post Versions
 /* /// https://e621.net/post_versions?search%5Bupdater_name%5D=a&search%5Bpost_id%5D=1&search%5Breason%5D=a&search%5Bdescription%5D=a&search%5Bdescription_changed%5D=true&search%5Brating_changed%5D=any&search%5Brating%5D=s&search%5Bparent_id%5D=10&search%5Bparent_id_changed%5D=1&search%5Btags%5D=1&search%5Btags_added%5D=1&search%5Btags_removed%5D=1&search%5Blocked_tags%5D=1&search%5Blocked_tags_added%5D=1&search%5Blocked_tags_removed%5D=1&search%5Bsource_changed%5D=true&search%5Buploads%5D=excluded&commit=Search
@@ -1537,7 +1944,8 @@ http.Request initRevertPoolRequest(
 /// * `search[other_names_present]`:
 /// * `search[hide_deleted]`:
 /// * `search[order]`:
-/// {@macro limitAndPageParams}
+/// {@macro limitRoot}
+/// {@macro pageRoot}
 ///
 /// NOTE: For some reason, `search[other_names_present]`
 /// & `search[hide_deleted]`, if present, are sent as `Yes` or `No` in the

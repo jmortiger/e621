@@ -1,5 +1,7 @@
 import 'dart:convert' as dc;
 import "dart:ui" show Color;
+import 'package:e621/src/tag_parsing.dart';
+
 import 'model.dart' as model;
 
 import 'general_enums.dart' hide ApiQueryParameter;
@@ -2466,8 +2468,8 @@ enum TagCategory {
       };
 }
 
-/// Database files contain upwards of a million entries. In cases where the 
-/// [TagDbEntry.id] is not important, this class may be used to minimize the 
+/// Database files contain upwards of a million entries. In cases where the
+/// [TagDbEntry.id] is not important, this class may be used to minimize the
 /// memory and performance cost of parsing and storing a large number of entries.
 class TagDbEntrySlim implements Comparable<TagDbEntrySlim> {
   /// <tag display name>,
@@ -2629,7 +2631,7 @@ class TagDbEntry extends TagDbEntrySlim {
         ..removeLast())
       .map(TagDbEntry.fromCsv)
       .toList();
-  
+
   static List<String> rootParse(String e) {
     var t = e.split(",");
     if (e.contains('"')) {
@@ -2674,7 +2676,7 @@ class Tag extends TagDbEntry {
   /// <ISO8601 timestamp>
   final DateTime updatedAt;
 
-  Tag({
+  const Tag({
     required super.id,
     required super.name,
     required super.postCount,
@@ -2705,4 +2707,291 @@ class Tag extends TagDbEntry {
       "created_at": createdAt,
       "updated_at": updatedAt,
     });
+}
+
+class Comment {
+  /// id
+  final int id;
+
+  /// created_at
+  final DateTime createdAt;
+
+  /// post_id
+  final int postId;
+
+  /// creator_id
+  final int creatorId;
+
+  /// body
+  final String body;
+
+  /// score
+  final int score;
+
+  /// updated_at
+  final DateTime updatedAt;
+
+  /// updater_id
+  final int updaterId;
+
+  /// do_not_bump_post
+  final bool? /* deprecated */ doNotBumpPost;
+
+  /// is_hidden
+  final bool isHidden;
+
+  /// is_sticky
+  final bool isSticky;
+
+  /// warning_type
+  ///
+  /// MUST NOT BE [WarningType.unmark]
+  final WarningType? warningType;
+
+  /// warning_user_id
+  final int? warningUserId;
+
+  /// creator_name
+  final String creatorName;
+
+  /// updater_name
+  final String updaterName;
+
+  const Comment({
+    required this.id,
+    required this.createdAt,
+    required this.postId,
+    required this.creatorId,
+    required this.body,
+    required this.score,
+    required this.updatedAt,
+    required this.updaterId,
+    required this.doNotBumpPost,
+    required this.isHidden,
+    required this.isSticky,
+    required this.warningType,
+    required this.warningUserId,
+    required this.creatorName,
+    required this.updaterName,
+  });
+
+  Comment.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        createdAt = DateTime.parse(json["created_at"]),
+        postId = json["post_id"],
+        creatorId = json["creator_id"],
+        body = json["body"],
+        score = json["score"],
+        updatedAt = DateTime.parse(json["updated_at"]),
+        updaterId = json["updater_id"],
+        doNotBumpPost = json["do_not_bump_post"],
+        isHidden = json["is_hidden"],
+        isSticky = json["is_sticky"],
+        warningType = json["warning_type"] != null
+            ? WarningType(json["warning_type"])
+            : null,
+        warningUserId = json["warning_user_id"],
+        creatorName = json["creator_name"],
+        updaterName = json["updater_name"];
+  factory Comment.fromRawJson(String json) {
+    final r = dc.jsonDecode(json);
+    return Comment.fromJson(r is List ? r.first : r);
+  }
+  static Iterable<Comment> fromRawJsonResults(String json) {
+    final r = dc.jsonDecode(json);
+    return r is List
+        ? r.map((e) => Comment.fromJson(e))
+        : r["comments"] == null
+            ? [Comment.fromJson(r)]
+            : (r["comments"] as List).map((e) => Comment.fromJson(e));
+  }
+
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "created_at": createdAt,
+        "post_id": postId,
+        "creator_id": creatorId,
+        "body": body,
+        "score": score,
+        "updated_at": updatedAt,
+        "updater_id": updaterId,
+        "do_not_bump_post": doNotBumpPost,
+        "is_hidden": isHidden,
+        "is_sticky": isSticky,
+        "warning_type": warningType?.query,
+        "warning_user_id": warningUserId,
+        "creator_name": creatorName,
+        "updater_name": updaterName,
+      };
+}
+
+class DTextResponse {
+  final String html;
+  final Map<int, DTextPost> posts;
+
+  const DTextResponse({required this.html, required this.posts});
+
+  DTextResponse.fromJson(Map<String, dynamic> json)
+      : html = json["html"],
+        posts = (json["posts"] as Map)
+            .map((k, v) => MapEntry(k, DTextPost.fromJson(v)));
+}
+
+class DTextPost {
+  /// id
+  final int id;
+
+  /// flags
+  final String flags;
+
+  /// tags
+  final String tags;
+
+  /// rating
+  final Rating rating;
+
+  /// file_ext
+  final String fileExt;
+
+  /// width
+  final int width;
+
+  /// height
+  final int height;
+
+  /// size
+  final int size;
+
+  /// created_at
+  final DateTime createdAt;
+
+  /// uploader
+  final String uploader;
+
+  /// uploader_id
+  final int uploaderId;
+
+  /// score
+  final int score;
+
+  /// fav_count
+  final int favCount;
+
+  /// is_favorited
+  final bool isFavorited;
+
+  /// pools
+  final List<int> pools;
+
+  /// md5
+  final String md5;
+
+  /// preview_url
+  final String? previewUrl;
+
+  /// large_url
+  final String? largeUrl;
+
+  /// file_url
+  final String? fileUrl;
+
+  /// preview_width
+  final int previewWidth;
+
+  /// preview_height
+  final int previewHeight;
+
+  const DTextPost({
+    required this.id,
+    required this.flags,
+    required this.tags,
+    required this.rating,
+    required this.fileExt,
+    required this.width,
+    required this.height,
+    required this.size,
+    required this.createdAt,
+    required this.uploader,
+    required this.uploaderId,
+    required this.score,
+    required this.favCount,
+    required this.isFavorited,
+    required this.pools,
+    required this.md5,
+    required this.previewUrl,
+    required this.largeUrl,
+    required this.fileUrl,
+    required this.previewWidth,
+    required this.previewHeight,
+  });
+
+  DTextPost.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        flags = json["flags"],
+        tags = json["tags"],
+        rating = Rating.fromTagText(json["rating"]),
+        fileExt = json["file_ext"],
+        width = json["width"],
+        height = json["height"],
+        size = json["size"],
+        createdAt = DateTime.parse(json["created_at"]),
+        uploader = json["uploader"],
+        uploaderId = json["uploader_id"],
+        score = json["score"],
+        favCount = json["fav_count"],
+        isFavorited = json["is_favorited"],
+        pools = (json["pools"] as List).cast<int>(),
+        md5 = json["md5"],
+        previewUrl = json["preview_url"],
+        largeUrl = json["large_url"],
+        fileUrl = json["file_url"],
+        previewWidth = json["preview_width"],
+        previewHeight = json["preview_height"];
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "flags": flags,
+        "tags": tags,
+        "rating": rating.suffixShort,
+        "file_ext": fileExt,
+        "width": width,
+        "height": height,
+        "size": size,
+        "created_at": createdAt,
+        "uploader": uploader,
+        "uploader_id": uploaderId,
+        "score": score,
+        "fav_count": favCount,
+        "is_favorited": isFavorited,
+        "pools": pools,
+        "md5": md5,
+        "preview_url": previewUrl,
+        "large_url": largeUrl,
+        "file_url": fileUrl,
+        "preview_width": previewWidth,
+        "preview_height": previewHeight,
+      };
+}
+
+class ModifiablePostSets {
+  final List<({String name, int id})> owned;
+  final List<({String name, int id})> maintained;
+  List<({String name, int id})> get all => owned + maintained;
+
+  const ModifiablePostSets({required this.owned, required this.maintained});
+
+  ModifiablePostSets.fromJson(Map<String, dynamic> json)
+      : maintained = (json["Maintained"] as List)
+            .map<({String name, int id})>(
+                (e) => (name: (e as List).first, id: e.last))
+            .toList(),
+        owned = (json["Owned"] as List)
+            .map<({String name, int id})>(
+                (e) => (name: (e as List).first, id: e.last))
+            .toList();
+  factory ModifiablePostSets.fromRawJson(String json) => ModifiablePostSets.fromJson(dc.jsonDecode(json));
+  Map<String, dynamic> toJson() => {
+        "maintained": maintained.map(elementToJson),
+        "owned": owned.map(elementToJson),
+      };
+  static List elementToJson(({String name, int id}) e) => [e.name, e.id];
 }

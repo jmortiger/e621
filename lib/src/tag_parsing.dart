@@ -1,3 +1,5 @@
+import 'package:e621/src/general_enums.dart';
+
 /// Matches characters not allowed in new tags (some old, unused tags violate this).
 ///
 /// https://e621.net/help/tags#guidelines
@@ -54,15 +56,12 @@ const tagTokenizer = r'(?<=\s|^|(?:description|note|source|delreason):"[^"]*")'
 /// Tokens are separated by whitespace. If there is at least 1 pair of quotes, the second quote is the end of that token.
 const tagAgnosticTokenizer =
     r'(?<=\s|^|")((?:[^\s"]+|(?="))(?:(?:"[^"]*?(?:"|(?:(?=$|[^"]+$)\S*)))|(?=\s|$)))';
+// For Testing Searches
+// jun_kobayashi -description" -has"-jun_kobayashi -9"10
+// https://e621.net/tags?commit=Search&page=3&search%5Bhide_empty%5D=0&search%5Bname_matches%5D=%2A%22%2A&search%5Border%5D=date
 
 // #region MetaTags
-mixin SearchableEnum on Enum {
-  String get searchString;
-}
 
-mixin SearchableStatefulEnum<T> on Enum {
-  String toSearch(T state);
-}
 
 /// https://e621.net/help/cheatsheet#sorting
 enum Order with SearchableEnum {
@@ -237,160 +236,6 @@ enum Order with SearchableEnum {
       return null;
     }
   }
-}
-
-enum Rating with SearchableEnum {
-  safe,
-  questionable,
-  explicit;
-
-  static const matcherNonStrictStr = "(${Modifier.matcher})($prefix)([^\\s]+)";
-  static RegExp get matcherNonStrictGenerated => RegExp(matcherNonStrictStr);
-  static const matcherStr = "(${Modifier.matcher})($prefix)"
-      r"(s|q|e|safe|questionable|explicit)(?=\s|$)";
-  static RegExp get matcherGenerated => RegExp(matcherStr);
-  static const prefix = "rating:";
-  @override
-  String get searchString => searchStringShort;
-  String get searchStringShort => "$prefix${name[0]}";
-  String get searchStringLong => "$prefix$name";
-  String get suffix => suffixShort;
-  String get suffixShort => name[0];
-  String get suffixLong => name;
-  const Rating();
-  factory Rating.fromTagText(String str) => switch (str) {
-        "e" => explicit,
-        "explicit" => explicit,
-        "q" => questionable,
-        "questionable" => questionable,
-        "s" => safe,
-        "safe" => safe,
-        _ => throw UnsupportedError("type not supported: $str"),
-      };
-  factory Rating.fromText(String str) => switch (str) {
-        "${prefix}e" || "${prefix}explicit" => explicit,
-        "${prefix}q" || "${prefix}questionable" => questionable,
-        "${prefix}s" || "${prefix}safe" => safe,
-        _ => Rating.fromTagText(str),
-      };
-
-  // @override
-  // Rating? _retrieve(String str) => retrieve(str);
-  static Rating? retrieve(String str) {
-    if (!Rating.matcherGenerated.hasMatch(str)) {
-      return null;
-    }
-    return Rating.fromTagText(matcherGenerated.firstMatch(str)!.group(3)!);
-  }
-
-  // @override
-  // (Modifier, Rating)? _retrieveWithModifier(String str) =>
-  //     retrieveWithModifier(str);
-  static (Modifier, Rating)? retrieveWithModifier(String str) {
-    if (!Rating.matcherGenerated.hasMatch(str)) {
-      return null;
-    }
-    final ms = Rating.matcherGenerated.allMatches(str);
-    final tags = ms.fold(
-      <(Modifier, Rating)>{},
-      (previousValue, e) => previousValue
-        ..add(
-          (
-            Modifier.fromString(e.group(1) ?? ""),
-            Rating.fromTagText(e.group(3)!)
-          ),
-        ),
-    );
-    (Modifier, Rating)? r;
-    for (final t in tags) {
-      if (r == null) {
-        r = t;
-      } else {
-        if (r.$1 == Modifier.add) {
-          if (t.$1 == Modifier.remove && t.$2 == r.$2) {
-            return null;
-          } else if (t.$1 == Modifier.add && t.$2 != r.$2) {
-            return null;
-          } else if (t.$1 == Modifier.or) {
-            continue;
-            //return null;
-          } /*  else if (t.$1 == Modifier.remove && t.$2 != r.$2) {
-            continue;
-          } */
-        } else if (r.$1 == Modifier.remove) {
-          if (t.$1 == Modifier.add && t.$2 == r.$2) {
-            return null;
-          } else if (t.$1 == Modifier.remove && t.$2 != r.$2) {
-            r = (
-              Modifier.add,
-              switch ((r.$2, t.$2)) {
-                (safe, questionable) => explicit,
-                (questionable, safe) => explicit,
-                (safe, explicit) => questionable,
-                (explicit, safe) => questionable,
-                (questionable, explicit) => safe,
-                (explicit, questionable) => safe,
-                (safe, safe) => throw StateError("Should be impossible"),
-                (questionable, questionable) =>
-                  throw StateError("Should be impossible"),
-                (explicit, explicit) =>
-                  throw StateError("Should be impossible"),
-              }
-            );
-          } else if (t.$1 == Modifier.or && t.$2 == r.$2) {
-            return null;
-          }
-        } else if (r.$1 == Modifier.or) {
-          if (t.$1 == Modifier.add && t.$2 != r.$2) {
-            return null;
-          } else if (t.$1 == Modifier.or && t.$2 != r.$2) {
-            r = (
-              Modifier.remove,
-              switch ((r.$2, t.$2)) {
-                (safe, questionable) => explicit,
-                (questionable, safe) => explicit,
-                (safe, explicit) => questionable,
-                (explicit, safe) => questionable,
-                (questionable, explicit) => safe,
-                (explicit, questionable) => safe,
-                (safe, safe) => throw StateError("Should be impossible"),
-                (questionable, questionable) =>
-                  throw StateError("Should be impossible"),
-                (explicit, explicit) =>
-                  throw StateError("Should be impossible"),
-              }
-            );
-          } else if (t.$1 == Modifier.remove && t.$2 != r.$2) {
-            r = t;
-          } else if (t.$1 == Modifier.remove && t.$2 == r.$2) {
-            r = (Modifier.remove, r.$2);
-          }
-        }
-      }
-    }
-    return r;
-  }
-}
-
-enum Modifier {
-  add,
-  remove,
-  or;
-
-  static const matcher = r"[\-\~]?";
-
-  const Modifier();
-  factory Modifier.fromString(String s) => switch (s) {
-        "+" || "" => Modifier.add,
-        "-" => Modifier.remove,
-        "~" => Modifier.or,
-        _ => throw UnsupportedError("Not supported: $s"),
-      };
-  String get symbol => switch (this) {
-        Modifier.add => "",
-        Modifier.remove => "-",
-        Modifier.or => "~",
-      };
 }
 
 enum FileType with SearchableEnum {

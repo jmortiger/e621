@@ -65,6 +65,61 @@ enum PoolOrder with ApiQueryParameter {
       };
 }
 
+enum CommentOrder with ApiQueryParameter {
+  idAsc._default("id_asc"),
+  idDesc._default("id_desc"),
+  status._default("status"),
+  statusDesc._default("status_desc"),
+  updatedAtDesc._default("updated_at_desc");
+
+  @override
+  final String query;
+
+  @override
+  String toString() => query;
+  const CommentOrder._default(this.query);
+  factory CommentOrder(String json) => switch (json) {
+        "id_asc" => idAsc,
+        "id_desc" => idDesc,
+        "status" => status,
+        "status_desc" => statusDesc,
+        "updated_at_desc" => updatedAtDesc,
+        _ => throw ArgumentError.value(
+            json,
+            "json",
+            'must be a value of '
+                '"id_asc", '
+                '"id_desc", '
+                '"status", '
+                '"status_desc", '
+                'or "updated_at_desc".',
+          ),
+      };
+}
+
+enum CommentGrouping with ApiQueryParameter {
+  comment._default("comment"),
+  post._default("post");
+
+  @override
+  final String query;
+
+  @override
+  String toString() => query;
+  const CommentGrouping._default(this.query);
+  factory CommentGrouping(String json) => switch (json) {
+        "comment" => comment,
+        "post" => post,
+        _ => throw ArgumentError.value(
+            json,
+            "json",
+            'must be a value of '
+                '"comment" '
+                'or "post".',
+          ),
+      };
+}
+
 enum UserOrder with ApiQueryParameter {
   joinDate._default("date"),
   name._default("name"),
