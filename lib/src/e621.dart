@@ -857,15 +857,21 @@ http.Request initListFavoritesRequest({
   String? page,
   BaseCredentials? credentials,
 }) =>
-    _baseInitRequestCredentialsOptional(
-        path: "/favorites.json",
-        queryParameters: {
-          if (userId != null) "user_id": userId,
-          if (limit != null) "limit": limit,
-          if (page != null) "page": page,
-        },
-        method: "GET",
-        credentials: credentials);
+    (userId ?? credentials ?? activeCredentials) == null
+        ? (throw ArgumentError.value(
+            (userId: userId, credentials: credentials),
+            "(userId, credentials)",
+            "At least one of userId, credentials, "
+                "or activeCredentials must be non-null"))
+        : _baseInitRequestCredentialsOptional(
+            path: "/favorites.json",
+            queryParameters: {
+              if (userId != null) "user_id": userId,
+              if (limit != null) "limit": limit,
+              if (page != null) "page": page,
+            },
+            method: "GET",
+            credentials: credentials);
 
 /// {@template CreateFavorite}
 /// [Create](https://e621.net/wiki_pages/2425#favorites_create)
@@ -1140,12 +1146,158 @@ http.Request initSearchUsersRequest({
 
 /// https://e621.net/users/248688.json
 /// `/users/<User_ID>.json` `GET`
+///
+/// Responses
+///
+/// `204` Success No Body
+///
+/// `403` Access Denied
+/// ```
+/// {
+///   "success": false,
+///   "reason": "Access Denied"
+/// }
+/// ```
+///
+/// `422` Invalid Input Data
+/// ```
+/// {
+///   "errors": {
+///     "key": [
+///       "the error"
+///     ]
+///   }
+/// }
+/// ```
 http.Request initGetUserRequest(
   int userId, {
   BaseCredentials? credentials,
 }) =>
     _baseInitRequestCredentialsOptional(
         path: "/users/$userId.json", method: "GET", credentials: credentials);
+
+/// `/users/<User_ID>.json` `PATCH`
+///
+/// * `id` The ID of the user. The actual value is ignored, but something must
+/// be supplied.
+/// * `user[comment_threshold]`
+/// * `user[default_image_size]`
+/// * `user[favorite_tags]`
+/// * `user[blacklisted_tags]`
+/// * `user[time_zone]`
+/// https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+/// * `user[per_page]`
+/// * `user[custom_style]`
+/// * `user[description_collapsed_initially]`
+/// * `user[hide_comments]`
+/// * `user[receive_email_notifications]`
+/// * `user[enable_keyboard_navigation]`
+/// * `user[enable_privacy_mode]`
+/// * `user[disable_user_dmails]`
+/// * `user[blacklist_users]`
+/// * `user[show_post_statistics]`
+/// * `user[style_usernames]`
+/// * `user[show_hidden_comments]`
+/// * `user[enable_autocomplete]`
+/// * `user[disable_cropped_thumbnails]`
+/// * `user[enable_safe_mode]`
+/// * `user[disable_responsive_mode]`
+/// * `user[dmail_filter_attributes][id]`
+/// * `user[dmail_filter_attributes][words]`
+/// * `user[profile_about]`
+/// * `user[profile_artinfo]`
+/// * `user[avatar_id]`
+/// * `user[enable_compact_uploader]`
+///
+/// Note: As the actual value is ignored, the value is currently optional, for
+/// if it becomes required at a later point.
+http.Request initUpdateUserRequest({
+  int userId = 1234,
+  int? userCommentThreshold,
+  String? userDefaultImageSize,
+  String? userFavoriteTags,
+  String? userBlacklistedTags,
+  String? userTimeZone,
+  int? userPerPage,
+  String? userCustomStyle,
+  bool? userDescriptionCollapsedInitially,
+  bool? userHideComments,
+  bool? userReceiveEmailNotifications,
+  bool? userEnableKeyboardNavigation,
+  bool? userEnablePrivacyMode,
+  bool? userDisableUserDmails,
+  bool? userBlacklistUsers,
+  bool? userShowPostStatistics,
+  bool? userStyleUsernames,
+  bool? userShowHiddenComments,
+  bool? userEnableAutocomplete,
+  bool? userDisableCroppedThumbnails,
+  bool? userEnableSafeMode,
+  bool? userDisableResponsiveMode,
+  int? userDmailFilterAttributesId,
+  String? userDmailFilterAttributesWords,
+  String? userProfileAbout,
+  String? userProfileArtInfo,
+  int? userAvatarId = -1,
+  bool? userEnableCompactUploader,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsRequired(
+      path: "/users/$userId.json",
+      method: "PATCH",
+      queryParameters: {
+        if (userCommentThreshold != null)
+          "user[comment_threshold]": userCommentThreshold,
+        if (userDefaultImageSize != null)
+          "user[default_image_size]": userDefaultImageSize,
+        if (userFavoriteTags != null) "user[favorite_tags]": userFavoriteTags,
+        if (userBlacklistedTags != null)
+          "user[blacklisted_tags]": userBlacklistedTags,
+        if (userTimeZone != null) "user[time_zone]`": userTimeZone,
+        if (userPerPage != null) "user[per_page]": userPerPage,
+        if (userCustomStyle != null) "user[custom_style]": userCustomStyle,
+        if (userDescriptionCollapsedInitially != null)
+          "user[description_collapsed_initially]":
+              userDescriptionCollapsedInitially,
+        if (userHideComments != null) "user[hide_comments]": userHideComments,
+        if (userReceiveEmailNotifications != null)
+          "user[receive_email_notifications]": userReceiveEmailNotifications,
+        if (userEnableKeyboardNavigation != null)
+          "user[enable_keyboard_navigation]": userEnableKeyboardNavigation,
+        if (userEnablePrivacyMode != null)
+          "user[enable_privacy_mode]": userEnablePrivacyMode,
+        if (userDisableUserDmails != null)
+          "user[disable_user_dmails]": userDisableUserDmails,
+        if (userBlacklistUsers != null)
+          "user[blacklist_users]": userBlacklistUsers,
+        if (userShowPostStatistics != null)
+          "user[show_post_statistics]": userShowPostStatistics,
+        if (userStyleUsernames != null)
+          "user[style_usernames]": userStyleUsernames,
+        if (userShowHiddenComments != null)
+          "user[show_hidden_comments]": userShowHiddenComments,
+        if (userEnableAutocomplete != null)
+          "user[enable_autocomplete]": userEnableAutocomplete,
+        if (userDisableCroppedThumbnails != null)
+          "user[disable_cropped_thumbnails]": userDisableCroppedThumbnails,
+        if (userEnableSafeMode != null)
+          "user[enable_safe_mode]": userEnableSafeMode,
+        if (userDisableResponsiveMode != null)
+          "user[disable_responsive_mode]": userDisableResponsiveMode,
+        if (userDmailFilterAttributesId != null)
+          "user[dmail_filter_attributes][id]": userDmailFilterAttributesId,
+        if (userDmailFilterAttributesWords != null)
+          "user[dmail_filter_attributes][words]":
+              userDmailFilterAttributesWords,
+        if (userProfileAbout != null) "user[profile_about]": userProfileAbout,
+        if (userProfileArtInfo != null)
+          "user[profile_artinfo]": userProfileArtInfo,
+        if ((userAvatarId ?? 1) > 0) "user[avatar_id]": userAvatarId,
+        if (userEnableCompactUploader != null)
+          "user[enable_compact_uploader]": userEnableCompactUploader,
+      },
+      credentials: credentials,
+    );
 // #endregion Users
 // #region Sets
 /// https://e621.net/post_sets.json?search%5Bname%5D=*&search%5Bshortname%5D=*&search%5Bcreator_name%5D=baggie&search%5Bcreator_id%5D=427822&search%5Border%5D=name
@@ -1680,7 +1832,7 @@ http.Request initGetCommentRequest({
 ///   }
 /// }
 /// ```
-http.Request initCreateCommentsRequest({
+http.Request initCreateCommentRequest({
   required String commentBody,
   required int commentPostId,
   bool? commentDoNotBumpPost,
@@ -2105,20 +2257,3 @@ Map<String, dynamic>? _prepareQueryParametersSafe(Map<String, dynamic>? qp) =>
             };
         return recurse(v);
       });
-
-/* class ResponseParsing {
-  /// When an attempt to add a fav fails due to hitting the 80000 post cap, the code is 422 and the body is as follows:
-  /// ```{
-  ///   "success": false,
-  ///   "message": "You can only keep up to 80000 favorites.",
-  ///   "code": null
-  /// }```
-  /*{
-  "success": false,
-  "message": "You can only keep up to 80000 favorites.",
-  "code": null
-}*/
-  String retrieveErrorMessage(String body) {
-    return dc.jsonDecode(body)["message"];
-  }
-} */
