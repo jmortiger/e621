@@ -35,10 +35,12 @@ class BaseCredentials {
     headers[headerKey] = headerValue;
     return headers;
   }
+
   Map<String, String> addToTyped(Map<String, String> headers) {
     headers[headerKey] = headerValue;
     return headers;
   }
+
   @Deprecated("Use addTo")
   Map<String, dynamic> addToHeadersMap(Map<String, dynamic> headers) =>
       addTo(headers);

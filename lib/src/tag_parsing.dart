@@ -61,8 +61,6 @@ const tagAgnosticTokenizer =
 // https://e621.net/tags?commit=Search&page=3&search%5Bhide_empty%5D=0&search%5Bname_matches%5D=%2A%22%2A&search%5Border%5D=date
 
 // #region MetaTags
-
-
 /// https://e621.net/help/cheatsheet#sorting
 enum Order with SearchableEnum {
   /// Oldest to newest

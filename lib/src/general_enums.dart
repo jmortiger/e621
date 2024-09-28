@@ -110,6 +110,12 @@ enum UserLevel {
           ),
       };
   static const jsonPropertyName = "level_string";
+  bool operator >(UserLevel rhs) => index > rhs.index;
+  bool operator <(UserLevel rhs) => index < rhs.index;
+  bool operator <=(UserLevel rhs) => index <= rhs.index;
+  bool operator >=(UserLevel rhs) => index >= rhs.index;
+  // @override
+  // bool operator ==(Object rhs) => rhs is UserLevel && rhs.index == index;
 }
 
 enum WarningType with ApiQueryParameter {
@@ -160,6 +166,7 @@ enum Modifier {
         Modifier.or => "~",
       };
 }
+
 mixin SearchableEnum on Enum {
   String get searchString;
 }
