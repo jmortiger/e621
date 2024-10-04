@@ -37,3 +37,8 @@ const like = 'sample';
 TODO: Tell users more about the package: where to find more information, how to 
 contribute to the package, how to file issues, what response they can expect 
 from the package authors, and more.
+
+Db Exports:
+* Seem to be made around 7:43 AM EST - 7:47 AM EST
+* Contains exports from the same day and the prior 3 days.
+  * i.e. At 9:05 AM on October 1, 2024, the exports will have September 28, September 29, September 30, and October 1.

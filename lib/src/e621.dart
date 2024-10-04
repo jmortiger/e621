@@ -1,3 +1,4 @@
+import 'package:e621/e621.dart' show UserLoggedIn;
 import 'package:http/http.dart' as http;
 
 import 'credentials.dart';
@@ -24,7 +25,12 @@ const maxPostsPerSearchByPageNumber = maxPageNumber * maxPostsPerSearch;
 const maxTagsPerSearch = 40;
 
 // #region Credentials
+String? activeUserAgent;
 BaseCredentials? activeCredentials;
+
+/// Adding the user agent appears to be disallowed on web, so this flag is
+/// provided to cut out the multiple errors printed to the (browser) console.
+bool addUserAgent = true;
 
 bool validateCredentials(BaseCredentials? credentials,
         [bool throwIfNeeded = true]) =>
@@ -49,17 +55,38 @@ BaseCredentials _getValidCredentials(BaseCredentials? credentials) =>
 // #endregion Credentials
 // #region Helpers
 String _getDbExportDate(DateTime dt) => dt.toIso8601String().substring(0, 10);
+Map<String, String> _addUserAgentTo(
+  Map<String, String> headers, [
+  BaseCredentials? credentials,
+]) =>
+    !addUserAgent
+        ? headers
+        : activeUserAgent != null
+            ? (headers..[AccessData.userAgentHeaderKey] = activeUserAgent!)
+            : credentials is AccessData
+                ? credentials.addToTyped(headers)
+                : activeCredentials is AccessData
+                    ? activeCredentials!.addToTyped(headers)
+                    : headers;
+
 http.Request _baseInitRequestCredentialsRequired({
   required String path,
   required String method,
   Map<String, dynamic>? queryParameters,
   BaseCredentials? credentials,
+  bool useBodyFields = false,
 }) {
   var uri = baseUri.replace(
       path: path,
-      queryParameters: _prepareQueryParametersSafe(queryParameters));
+      queryParameters:
+          useBodyFields ? null : _prepareQueryParametersSafe(queryParameters));
   var req = http.Request(method, uri);
-  _getValidCredentials(credentials).addTo(req.headers);
+  _getValidCredentials(credentials).addToTyped(req.headers);
+  _addUserAgentTo(req.headers);
+  if (queryParameters != null && useBodyFields) {
+    req.bodyFields =
+        _prepareQueryParametersSafe(queryParameters)!.cast<String, String>();
+  }
   return req;
 }
 
@@ -68,12 +95,63 @@ http.Request _baseInitRequestCredentialsOptional({
   required String method,
   Map<String, dynamic>? queryParameters,
   BaseCredentials? credentials,
+  bool useBodyFields = false,
 }) {
   var uri = baseUri.replace(
       path: path,
-      queryParameters: _prepareQueryParametersSafe(queryParameters));
+      queryParameters:
+          useBodyFields ? null : _prepareQueryParametersSafe(queryParameters));
   var req = http.Request(method, uri);
-  (credentials ?? activeCredentials)?.addTo(req.headers);
+  (credentials ?? activeCredentials)?.addToTyped(req.headers);
+  _addUserAgentTo(req.headers);
+  if (queryParameters != null && useBodyFields) {
+    req.bodyFields =
+        _prepareQueryParametersSafe(queryParameters)!.cast<String, String>();
+  }
+  return req;
+}
+
+http.MultipartRequest _baseInitMultipartRequestCredentialsRequired({
+  required String path,
+  required String method,
+  Map<String, dynamic>? queryParameters,
+  BaseCredentials? credentials,
+  bool useBodyFields = false,
+  required http.MultipartFile file,
+}) {
+  var uri = baseUri.replace(
+      path: path,
+      queryParameters:
+          useBodyFields ? null : _prepareQueryParametersSafe(queryParameters));
+  var req = http.MultipartRequest(method, uri)..files.add(file);
+  _getValidCredentials(credentials).addToTyped(req.headers);
+  _addUserAgentTo(req.headers);
+  if (queryParameters != null && useBodyFields) {
+    req.fields.addAll(
+        _prepareQueryParametersSafe(queryParameters)!.cast<String, String>());
+  }
+  return req;
+}
+
+http.MultipartRequest _baseInitMultipartRequestCredentialsOptional({
+  required String path,
+  required String method,
+  Map<String, dynamic>? queryParameters,
+  BaseCredentials? credentials,
+  bool useBodyFields = false,
+  required http.MultipartFile file,
+}) {
+  var uri = baseUri.replace(
+      path: path,
+      queryParameters:
+          useBodyFields ? null : _prepareQueryParametersSafe(queryParameters));
+  var req = http.MultipartRequest(method, uri)..files.add(file);
+  (credentials ?? activeCredentials)?.addToTyped(req.headers);
+  _addUserAgentTo(req.headers);
+  if (queryParameters != null && useBodyFields) {
+    req.fields.addAll(
+        _prepareQueryParametersSafe(queryParameters)!.cast<String, String>());
+  }
   return req;
 }
 
@@ -123,49 +201,128 @@ String foldIterableForUrl(Iterable i, {bool allowEmpty = true}) =>
         : " ";
 // #endregion Helpers
 
+// TODO: Make naming conventions consistent.
+// Format: [init|send][<item>Post|Set|Pool|...](?<action>Search|Get|Edit|Delete|Revert|...)(modifiers)
+// Format: init/sendItemAction
+// Format: initPostSearch
+
 // #region Requests
+
+// #region Db Exports
+@Deprecated("Use initDbExportTagsGet")
 http.Request initDbExportRequest({
+  DateTime? date,
+  BaseCredentials? credentials,
+}) =>
+    initDbExportTagsGet(date: date, credentials: credentials);
+
+/// {@template dbExportEndpoint}
+/// https://e621.net/db_export/
+///
+/// * [date] must be within 4 days of today (e.g. today and the 3 days prior).
+/// Today's export should be done by 8:00 AM EST.
+///
+/// All exports are `.csv.gz` files.
+/// {@endtemplate}
+http.Request initDbExportTagsGet({
+  DateTime? date,
   BaseCredentials? credentials,
 }) =>
     _baseInitRequestCredentialsOptional(
-        path: "/db_export/tags-${_getDbExportDate(DateTime.now())}.csv.gz",
+        path: "/db_export/tags-"
+            "${_getDbExportDate(date ?? DateTime.now())}.csv.gz",
         method: "GET",
         credentials: credentials);
 
-// #region Popular Posts
-/// {@template postsPopular}
-/// https://e621.net/popular.json
+/// {@macro dbExportEndpoint}
+http.Request initDbExportPoolsGet({
+  DateTime? date,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+        path: "/db_export/pools-"
+            "${_getDbExportDate(date ?? DateTime.now())}.csv.gz",
+        method: "GET",
+        credentials: credentials);
+
+/// {@macro dbExportEndpoint}
+http.Request initDbExportPostsGet({
+  DateTime? date,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+        path: "/db_export/posts-"
+            "${_getDbExportDate(date ?? DateTime.now())}.csv.gz",
+        method: "GET",
+        credentials: credentials);
+
+/// {@macro dbExportEndpoint}
+http.Request initDbExportTagAliasesGet({
+  DateTime? date,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+        path: "/db_export/tag_aliases-"
+            "${_getDbExportDate(date ?? DateTime.now())}.csv.gz",
+        method: "GET",
+        credentials: credentials);
+
+/// {@macro dbExportEndpoint}
+http.Request initDbExportTagImplicationsGet({
+  DateTime? date,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+        path: "/db_export/tag_implications-"
+            "${_getDbExportDate(date ?? DateTime.now())}.csv.gz",
+        method: "GET",
+        credentials: credentials);
+
+/// {@macro dbExportEndpoint}
+http.Request initDbExportWikiPagesGet({
+  DateTime? date,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+        path: "/db_export/wiki_pages-"
+            "${_getDbExportDate(date ?? DateTime.now())}.csv.gz",
+        method: "GET",
+        credentials: credentials);
+// #endregion Db Exports
+// #region Popular
+/// [OpenAPI](https://e621.wiki/#:~:text=List%20Most%20Upvoted%20Posts)
 ///
-/// The base URL is `/popular.json` called with `GET`.
+/// The base URL is [`/popular.json`](https://e621.net/popular.json) called with `GET`.
 ///
 /// * [date] : Sets the date to get popular posts from.
 /// * [scale] : The time frame around [date] to get popular posts from.
 ///
 /// This returns an object with a `posts` field containing a JSON array, for each post it returns:
 /// {@macro PostListing}
-/// {@endtemplate}
-http.Request initSearchPopularRequest({
+http.Request initPopularSearch({
   DateTime? date,
   se.PopularTimeScale? scale,
   BaseCredentials? credentials,
 }) =>
-    initSearchPopularRequestUnconstrained(
+    initPopularSearchUnconstrained(
       date: date?.toIso8601String(),
       scale: scale?.name,
     );
 
-/// {@template postsPopularUnconstrained}
-/// https://e621.net/popular.json
+/// [OpenAPI](https://e621.wiki/#:~:text=List%20Most%20Upvoted%20Posts)
 ///
-/// The base URL is `/popular.json` called with `GET`.
+/// The base URL is [`/popular.json`](https://e621.net/popular.json) called with `GET`.
 ///
 /// * [date] : Sets the date to get popular posts from. Must be a ISO 8601 date-time string.
-/// * [scale] : The time frame around [date] to get popular posts from. Must be either null, `day`, `week`, or `month`.
+/// * [scale] : The time frame around [date] to get popular posts from. Must be:
+///   * `null`,
+///   * `"day"`,
+///   * `"week"`, or
+///   * `"month"`.
 ///
 /// This returns an object with a `posts` field containing a JSON array, for each post it returns:
 /// {@macro PostListing}
-/// {@endtemplate}
-http.Request initSearchPopularRequestUnconstrained({
+http.Request initPopularSearchUnconstrained({
   String? date,
   String? scale,
   BaseCredentials? credentials,
@@ -178,77 +335,252 @@ http.Request initSearchPopularRequestUnconstrained({
         },
         method: "GET",
         credentials: credentials);
-// #endregion Popular Posts
+// #endregion Popular
 // #region Posts
-/* /// TODO: Requires multipart form 
-  /// https://pub.dev/documentation/http/latest/http/MultipartRequest-class.html#:~:text=A%20multipart%2Fform%2Ddata%20request,value%20set%20by%20the%20user
-  /// https://stackoverflow.com/questions/71424265/how-to-send-multipart-file-with-flutter
-  /// (Create)[https://e621.net/wiki_pages/2425#posts_create]
-  /// The base URL is /uploads.json called with POST.
-  /// There are only four mandatory fields: you need to supply the file (either through a multipart form or through a source URL), the tags, a source (even if blank), and the rating.
-  /// 
-  /// * `upload[tag_string]` A space delimited list of tags.
-  /// * `upload[file]` The file data encoded as a multipart form.
-  /// * `upload[rating]` The rating for the post. Can be: s, q or e for safe, questionable, and explicit respectively.
-  /// * `upload[direct_url]` If this is a URL, e621 will download the file.
-  /// * `upload[source]` This will be used as the post's 'Source' text. Separate multiple URLs with %0A (url-encoded newline) to define multiple sources. Limit of ten URLs
-  /// * `upload[description]` The description for the post.
-  /// * `upload[parent_id]` The ID of the parent post.
-  /// * `upload[as_pending]`
-  /// If the call fails, the following response reasons are possible:
-  /// 
-  /// * `MD5` mismatch This means you supplied an MD5 parameter and what e621 got doesn't match. Try uploading the file again.
-  /// * `duplicate` This post already exists in e621 (based on the MD5 hash). An additional attribute called location will be set, pointing to the (relative) URL of the original post.
-  /// * `other` Any other error will have its error message printed.
-  /// Response:
-  /// Success:
-  /// HTTP 200 OK
-  /// 
-  /// {
-  ///     "success":true",
-  ///     ”location":"/posts/<Post_ID>",
-  ///     "post_id":<Post_ID>
-  /// }
-  /// Failed due to the post already existing:
-  /// HTTP 412
-  /// 
-  /// {
-  ///     "success":false,
-  ///     "reason":"duplicate",
-  ///     "location":"/posts/<Post_ID>",
-  ///     "post_id":<Post_ID>
-  /// }
-  http.Request initCreatePostRequest({
-    String? uploadTagString,
-    String? uploadFile,
-    String? uploadRating,
-    String? uploadDirectUrl,
-    String? uploadSource,
-    String? uploadDescription,
-    String? uploadParentId,
-    String? uploadAsPending,
-    BaseCredentials? credentials,
-  }) =>
-      _baseInitRequestCredentialsRequired(
+// #region Create
+/// TODO: Test
+/// https://pub.dev/documentation/http/latest/http/MultipartRequest-class.html#:~:text=A%20multipart%2Fform%2Ddata%20request,value%20set%20by%20the%20user
+/// https://stackoverflow.com/questions/71424265/how-to-send-multipart-file-with-flutter
+///
+/// {@template postUpload}
+/// [Create](https://e621.net/wiki_pages/2425#posts_create)
+///
+/// [OpenAPI](https://e621.wiki/#:~:text=Upload%20Post)
+///
+/// The base URL is [`/uploads.json`](https://e621.net/uploads.json) called with `POST`.
+///
+/// There are only four mandatory fields: you need to supply the file (either through a multipart form or through a source URL), the tags, a source (even if blank), and the rating.
+///
+/// If `upload[source]` is not supplied and `upload[direct_url]` is, the
+/// wrapper will add that as a source to prevent an error.
+///
+/// * `upload[tag_string]` A space delimited list of tags.
+/// * `upload[file]` The file data encoded as a multipart form. Mutually exclusive with `upload[direct_url]`.
+/// * `upload[direct_url]` If this is a URL, e621 will download the file. Mutually exclusive with `upload[file]`.
+/// * `upload[rating]` The rating for the post. Can be: s, q or e for safe, questionable, and explicit respectively.
+/// * `upload[source]` This will be used as the post's 'Source' text. Separate multiple URLs with %0A (url-encoded newline) to define multiple sources. Limit of ten URLs
+/// * `upload[description]` The description for the post.
+/// * `upload[parent_id]` The ID of the parent post.
+/// * `upload[as_pending]` Must have the "Unrestricted Uploads" permission.
+/// * `upload[locked_rating]` Must be Privileged+ to use.
+/// * `upload[locked_tags]` Must be Admin+ to use.
+///
+/// If the call fails, the following response reasons are possible:
+///
+/// * `MD5` mismatch This means you supplied an MD5 parameter and what e621 got doesn't match. Try uploading the file again.
+/// * `duplicate` This post already exists in e621 (based on the MD5 hash). An additional attribute called location will be set, pointing to the (relative) URL of the original post.
+/// * `other` Any other error will have its error message printed.
+///
+/// Response:
+/// Success:
+/// HTTP 200 OK
+/// ```json
+/// {
+///     "success":true,
+///     "location":"/posts/<Post_ID>",
+///     "post_id":<Post_ID>
+/// }
+/// ```
+/// Failed due to the post already existing:
+/// HTTP 412
+/// ```json
+/// {
+///     "success":false,
+///     "reason":"duplicate",
+///     "location":"/posts/<Post_ID>",
+///     "post_id":<Post_ID>
+/// }
+/// ```
+/// {@endtemplate}
+http.BaseRequest initPostCreate({
+  required String uploadTagString,
+  String? uploadFileString,
+  List<int>? uploadFileBytes,
+  Stream<List<int>>? uploadFileStream,
+  int? uploadFileStreamLength,
+  required ge.Rating uploadRating,
+  String? uploadDirectUrl,
+  Iterable<String>? uploadSources,
+  String? uploadSource,
+  String? uploadDescription,
+  int? uploadParentId,
+  bool? uploadAsPending,
+  bool? uploadLockedRating,
+  bool? uploadLockedTags,
+  BaseCredentials? credentials,
+}) {
+  final source = (uploadSources?.isNotEmpty ?? false)
+      ? (uploadSource != null
+              ? [uploadSource].followedBy(uploadSources!)
+              : uploadSources!)
+          .take(10)
+          // .join("\n")
+          .join("%0A")
+      : (uploadSource ??
+          uploadDirectUrl ??
+          (throw ArgumentError.value((uploadSource, uploadSources),
+              "(uploadSource, uploadSources)", "A source is required")));
+  final Map<String, String> params = {
+    "upload[tag_string]": uploadTagString,
+    "upload[rating]": uploadRating.suffixShort,
+    "upload[source]": source,
+    if (uploadDescription != null) "upload[description]": uploadDescription,
+    if (uploadParentId != null) "upload[parent_id]": uploadParentId.toString(),
+    if (uploadAsPending != null)
+      "upload[as_pending]": uploadAsPending.toString(),
+    if (uploadLockedRating != null)
+      "upload[locked_rating]": uploadLockedRating.toString(),
+    if (uploadLockedTags != null)
+      "upload[locked_tags]": uploadLockedTags.toString(),
+  };
+  return uploadDirectUrl == null
+      ? _baseInitMultipartRequestCredentialsRequired(
           path: "/uploads.json",
-          queryParameters: {
-            if (uploadTagString != null) "upload[tag_string]": uploadTagString,
-            if (uploadFile != null) "upload[file]": uploadFile,
-            if (uploadRating != null) "upload[rating]": uploadRating,
-            if (uploadDirectUrl != null) "upload[direct_url]": uploadDirectUrl,
-            if (uploadSource != null) "upload[source]": uploadSource,
-            if (uploadDescription != null) "upload[description]": uploadDescription,
-            if (uploadParentId != null) "upload[parent_id]": uploadParentId,
-            if (uploadAsPending != null) "upload[as_pending]": uploadAsPending,
+          queryParameters: params,
+          file: switch ((
+            uploadFileStream,
+            uploadFileStreamLength,
+            uploadFileBytes,
+            uploadFileString
+          )) {
+            (Stream<List<int>> stream, int length, _, _) =>
+              http.MultipartFile("upload[file]", stream, length),
+            (_, _, List<int> bytes, _) =>
+              http.MultipartFile.fromBytes("upload[file]", bytes),
+            (_, _, _, String string) =>
+              http.MultipartFile.fromString("upload[file]", string),
+            _ => throw ArgumentError("Either uploadFileBytes, "
+                "uploadFileStream & uploadFileStreamLength, "
+                "uploadFileString"
+                "or uploadDirectUrl must be non-null"),
           },
+          useBodyFields: true,
           method: "POST",
-          credentials: credentials); */
-/// {@template postSearch}
+          credentials: credentials)
+      : _baseInitRequestCredentialsRequired(
+          path: "/uploads.json",
+          queryParameters: params
+            ..addAll({"upload[direct_url]": uploadDirectUrl}),
+          useBodyFields: true,
+          method: "POST",
+          credentials: credentials);
+}
+
+http.Request initPostCreateWithDirectUrl({
+  required String uploadTagString,
+  required ge.Rating uploadRating,
+  required String uploadDirectUrl,
+  String? uploadSource,
+  Iterable<String>? uploadSources,
+  String? uploadDescription,
+  int? uploadParentId,
+  bool? uploadAsPending,
+  bool? uploadLockedRating,
+  bool? uploadLockedTags,
+  BaseCredentials? credentials,
+}) =>
+    initPostCreate(
+      uploadTagString: uploadTagString,
+      uploadRating: uploadRating,
+      uploadDirectUrl: uploadDirectUrl,
+      uploadSources: uploadSources,
+      uploadSource: uploadSource,
+      uploadDescription: uploadDescription,
+      uploadParentId: uploadParentId,
+      uploadAsPending: uploadAsPending,
+      uploadLockedRating: uploadLockedRating,
+      uploadLockedTags: uploadLockedTags,
+      credentials: credentials,
+    ) as http.Request;
+http.MultipartRequest initPostCreateWithFileStream({
+  required String uploadTagString,
+  required Stream<List<int>> uploadFileStream,
+  required int uploadFileStreamLength,
+  required ge.Rating uploadRating,
+  String? uploadSource,
+  Iterable<String>? uploadSources,
+  String? uploadDescription,
+  int? uploadParentId,
+  bool? uploadAsPending,
+  bool? uploadLockedRating,
+  bool? uploadLockedTags,
+  BaseCredentials? credentials,
+}) =>
+    initPostCreate(
+      uploadTagString: uploadTagString,
+      uploadRating: uploadRating,
+      uploadFileStream: uploadFileStream,
+      uploadFileStreamLength: uploadFileStreamLength,
+      uploadSources: uploadSources,
+      uploadSource: uploadSource,
+      uploadDescription: uploadDescription,
+      uploadParentId: uploadParentId,
+      uploadAsPending: uploadAsPending,
+      uploadLockedRating: uploadLockedRating,
+      uploadLockedTags: uploadLockedTags,
+      credentials: credentials,
+    ) as http.MultipartRequest;
+http.MultipartRequest initPostCreateWithFileBytes({
+  required List<int> uploadFileBytes,
+  required String uploadTagString,
+  required ge.Rating uploadRating,
+  String? uploadSource,
+  Iterable<String>? uploadSources,
+  String? uploadDescription,
+  int? uploadParentId,
+  bool? uploadAsPending,
+  bool? uploadLockedRating,
+  bool? uploadLockedTags,
+  BaseCredentials? credentials,
+}) =>
+    initPostCreate(
+      uploadFileBytes: uploadFileBytes,
+      uploadTagString: uploadTagString,
+      uploadRating: uploadRating,
+      uploadSources: uploadSources,
+      uploadSource: uploadSource,
+      uploadDescription: uploadDescription,
+      uploadParentId: uploadParentId,
+      uploadAsPending: uploadAsPending,
+      uploadLockedRating: uploadLockedRating,
+      uploadLockedTags: uploadLockedTags,
+      credentials: credentials,
+    ) as http.MultipartRequest;
+http.MultipartRequest initPostCreateWithFileString({
+  required String uploadFileString,
+  required String uploadTagString,
+  required ge.Rating uploadRating,
+  String? uploadSource,
+  Iterable<String>? uploadSources,
+  String? uploadDescription,
+  int? uploadParentId,
+  bool? uploadAsPending,
+  bool? uploadLockedRating,
+  bool? uploadLockedTags,
+  BaseCredentials? credentials,
+}) =>
+    initPostCreate(
+      uploadFileString: uploadFileString,
+      uploadTagString: uploadTagString,
+      uploadRating: uploadRating,
+      uploadSources: uploadSources,
+      uploadSource: uploadSource,
+      uploadDescription: uploadDescription,
+      uploadParentId: uploadParentId,
+      uploadAsPending: uploadAsPending,
+      uploadLockedRating: uploadLockedRating,
+      uploadLockedTags: uploadLockedTags,
+      credentials: credentials,
+    ) as http.MultipartRequest;
+// #endregion Create
+
 /// [List](https://e621.net/wiki_pages/2425#posts_list)
+///
+/// [OpenAPI](https://e621.wiki/#:~:text=Search%20Posts)
 ///
 /// The base URL is `/posts.json` called with `GET`.
 ///
-/// Deleted posts are returned when status:deleted/status:any is in the searched tags.
+/// Deleted posts are returned when `status:deleted`/`status:any` is in the searched tags.
 ///
 /// The most efficient method to iterate a large number of posts is to search use the page parameter, using page=b<ID> and using the lowest ID retrieved from the previous list of posts. The first request should be made without the page parameter, as this returns the latest posts first, so you can then iterate using the lowest ID. Providing arbitrarily large values to obtain the most recent posts is not portable and may break in the future.
 ///
@@ -262,8 +594,8 @@ http.Request initSearchPopularRequestUnconstrained({
 ///
 /// {@template PostListing}
 /// * `id` The ID number of the post.
-/// * `created_at` The time the post was created in the format of YYYY-MM-DDTHH:MM:SS.MS+00:00.
-/// * `updated_at` The time the post was last updated in the format of YYYY-MM-DDTHH:MM:SS.MS+00:00.
+/// * `created_at` The time the post was created in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
+/// * `updated_at` The time the post was updated in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
 /// * `file` (array group)
 /// * `width` The width of the post.
 /// * `height` The height of the post.
@@ -341,8 +673,7 @@ http.Request initSearchPopularRequestUnconstrained({
 ///   "code": null
 /// }
 /// ```
-/// {@endtemplate}
-http.Request initPostSearchRequest({
+http.Request initPostSearch({
   int? limit,
   String? tags,
   String? page,
@@ -358,13 +689,43 @@ http.Request initPostSearchRequest({
         method: "GET",
         credentials: credentials);
 
-/// Same as [initPostSearchRequest], but checks the [tags] length to
+///
+/// [OpenAPI](https://e621.wiki/#:~:text=Get%20Random%20Post)
+///
+/// The base URL is `/posts/random.json` called with `GET`.
+///
+/// * `tags` The tag search query. Any tag combination that works on the website will work here.
+///
+/// ## Responses
+/// #### 200 Success
+/// {@macro postListing}
+///
+/// {@template response404}
+/// #### 404 Not Found
+/// ```json
+/// {
+///   "success": false,
+///   "reason": "not found"
+/// }
+/// ```
+/// {@endtemplate}
+http.Request initPostRandom({
+  String? tags,
+  BaseCredentials? credentials,
+}) =>
+    _baseInitRequestCredentialsOptional(
+        path: "/posts/random.json",
+        queryParameters: {
+          if (tags != null) "tags": tags,
+        },
+        method: "GET",
+        credentials: credentials);
+
+/// Same as [initPostSearch], but checks the [tags] length to
 /// ensure it doesn't exceed the tag limit in [maxTagsPerSearch].
 ///
-/// {@macro postSearch}
-///
 /// Throws an [ArgumentError] if you exceed the tag limit.
-http.Request initPostSearchRequestChecked({
+http.Request initPostSearchChecked({
   int? limit,
   List<String>? tags,
   String? page,
@@ -384,13 +745,6 @@ http.Request initPostSearchRequestChecked({
         method: "GET",
         credentials: credentials);
 
-@Deprecated("Use initGetPostRequest")
-http.Request initSearchPostRequest(
-  int postId, {
-  BaseCredentials? credentials,
-}) =>
-    initGetPostRequest(postId, credentials: credentials);
-
 /// [List](https://e621.net/wiki_pages/2425#posts_list)
 ///
 /// The base URL is /posts/<Post_ID>.json called with GET.
@@ -404,7 +758,7 @@ http.Request initSearchPostRequest(
 ///
 /// {"success":false,"reason":"not found"}
 /// ```
-http.Request initGetPostRequest(
+http.Request initPostGet(
   int postId, {
   BaseCredentials? credentials,
 }) =>
@@ -432,7 +786,7 @@ http.Request initGetPostRequest(
 /// * `post[is_note_locked]` Set to true to prevent others from adding notes.
 /// * `post[edit_reason]` The reason for the submitted changes. Inline DText allowed.
 /// TODO: Handle default values, as null is acceptable for some.
-http.Request initUpdatePostRequest({
+http.Request initPostEdit({
   required int postId,
   String? postTagStringDiff,
   String? postSourceDiff,
@@ -484,7 +838,7 @@ http.Request initUpdatePostRequest({
         },
         method: "PATCH",
         credentials: credentials);
-bool doesPostUpdateHaveChanges({
+bool doesPostEditHaveChanges({
   String? postTagStringDiff,
   String? postSourceDiff,
   int? postParentId,
@@ -617,10 +971,12 @@ http.Request initPostCastVoteRequest({
 /// * 6 invalid
 /// * 7 meta
 /// * 8 lore
+///
 /// See here for a description of what different types of tags are and do.
 /// </details>
-/// Response:
-/// Success:
+///
+/// ### Response:
+/// #### Success:
 /// HTTP 200
 ///
 /// ```
@@ -640,9 +996,9 @@ http.Request initPostCastVoteRequest({
 /// ```
 /// If your query succeeds but produces no results, you will receive instead the following special value:
 /// `{ "tags":[] }`
-http.Request initSearchTagsRequest({
+http.Request initTagSearch({
   String? searchNameMatches,
-  int? searchCategory,
+  ge.TagCategory? searchCategory,
   String? searchOrder,
   bool? searchHideEmpty,
   bool? searchHasWiki,
@@ -656,7 +1012,7 @@ http.Request initSearchTagsRequest({
         queryParameters: {
           if (searchNameMatches != null)
             "search[name_matches]": searchNameMatches,
-          if (searchCategory != null) "search[category]": searchCategory,
+          if (searchCategory != null) "search[category]": searchCategory.index,
           if (searchOrder != null) "search[order]": searchOrder,
           if (searchHideEmpty != null) "search[hide_empty]": searchHideEmpty,
           if (searchHasWiki != null) "search[has_wiki]": searchHasWiki,
@@ -681,12 +1037,13 @@ http.Request initSearchTagsRequest({
 /// * `search[order]` Changes the sort order. Pass one of status (default), created_at, updated_at, name, or tag_count.
 /// * `limit` Maximum number of results to return per query.
 /// * `page` The page that will be returned. Can also be used with a or b + alias_id to get the aliases after or before the specified alias ID. For example a13 gets every alias after alias_id 13 up to the limit. This overrides the specified search ordering, created_at is always used instead.
-/// * Some aliases have a status which is an error message, these show up in searches where status is omitted but there is no way to search for them specifically.
+///
+/// \* Some aliases have a status which is an error message, these show up in searches where status is omitted but there is no way to search for them specifically.
 ///
 /// Response:
 /// Success:
 /// HTTP 200
-///
+/// ```json
 /// [{
 ///    "id": <numeric alias id>,
 ///    "status": <status string>,
@@ -695,7 +1052,7 @@ http.Request initSearchTagsRequest({
 ///    "post_count": <# matching posts>,
 ///    "reason": <explanation>,
 ///    "creator_id": <user id>,
-///    "approver_id": <user id>
+///    "approver_id": <user id>,
 ///    "created_at": <ISO8601 timestamp>,
 ///    "updated_at": <ISO8601 timestamp>,
 ///    "forum_post_id": <post id>,
@@ -703,15 +1060,20 @@ http.Request initSearchTagsRequest({
 /// },
 /// ...
 /// ]
+/// ```
 /// If your query succeeds but produces no results, you will receive instead the following special value:
 ///
-/// { "tag_aliases":[] }
-http.Request initSearchTagAliasesRequest({
+/// `{ "tag_aliases":[] }`
+http.Request initTagAliasSearch({
   String? searchNameMatches,
   String? searchAntecedentName,
+  Iterable<String>? searchAntecedentNames,
   String? searchConsequentName,
-  String? searchAntecedentTagCategory,
-  String? searchConsequentTagCategory,
+  Iterable<String>? searchConsequentNames,
+  ge.TagCategory? searchAntecedentTagCategory,
+  Iterable<ge.TagCategory>? searchAntecedentTagCategories,
+  ge.TagCategory? searchConsequentTagCategory,
+  Iterable<ge.TagCategory>? searchConsequentTagCategories,
   String? searchCreatorName,
   String? searchApproverName,
   String? searchStatus,
@@ -725,14 +1087,48 @@ http.Request initSearchTagAliasesRequest({
         queryParameters: {
           if (searchNameMatches != null)
             "search[name_matches]": searchNameMatches,
-          if (searchAntecedentName != null)
-            "search[antecedent_name]": searchAntecedentName,
-          if (searchConsequentName != null)
-            "search[consequent_name]": searchConsequentName,
-          if (searchAntecedentTagCategory != null)
-            "search[antecedent_tag_category]": searchAntecedentTagCategory,
-          if (searchConsequentTagCategory != null)
-            "search[consequent_tag_category]": searchConsequentTagCategory,
+          if ((searchAntecedentNames?.isNotEmpty ?? false) ||
+              searchAntecedentName != null)
+            "search[antecedent_name]":
+                (searchAntecedentNames?.isNotEmpty ?? false)
+                    ? (searchAntecedentName != null
+                            ? searchAntecedentNames!
+                                .followedBy([searchAntecedentName])
+                            : searchAntecedentNames!)
+                        .join(",")
+                    : searchAntecedentName,
+          if ((searchConsequentNames?.isNotEmpty ?? false) ||
+              searchConsequentName != null)
+            "search[consequent_name]":
+                (searchConsequentNames?.isNotEmpty ?? false)
+                    ? (searchConsequentName != null
+                            ? searchConsequentNames!
+                                .followedBy([searchConsequentName])
+                            : searchConsequentNames!)
+                        .join(",")
+                    : searchConsequentName,
+          if ((searchAntecedentTagCategories?.isNotEmpty ?? false) ||
+              searchAntecedentTagCategory != null)
+            "search[antecedent_tag_category]":
+                (searchAntecedentTagCategories?.isNotEmpty ?? false)
+                    ? (searchAntecedentTagCategory != null
+                            ? searchAntecedentTagCategories!
+                                .followedBy([searchAntecedentTagCategory])
+                            : searchAntecedentTagCategories!)
+                        .map((e) => e.index)
+                        .join(",")
+                    : searchAntecedentTagCategory!.index,
+          if ((searchConsequentTagCategories?.isNotEmpty ?? false) ||
+              searchConsequentTagCategory != null)
+            "search[consequent_tag_category]":
+                (searchConsequentTagCategories?.isNotEmpty ?? false)
+                    ? (searchConsequentTagCategory != null
+                            ? searchConsequentTagCategories!
+                                .followedBy([searchConsequentTagCategory])
+                            : searchConsequentTagCategories!)
+                        .map((e) => e.index)
+                        .join(",")
+                    : searchConsequentTagCategory!.index,
           if (searchCreatorName != null)
             "search[creator_name]": searchCreatorName,
           if (searchApproverName != null)
@@ -784,12 +1180,16 @@ http.Request initSearchTagAliasesRequest({
 /// If your query succeeds but produces no results, you will receive instead the following special value:
 ///
 /// { "tag_implications":[] }
-http.Request initSearchTagImplicationsRequest({
+http.Request initTagImplicationSearch({
   String? searchNameMatches,
   String? searchAntecedentName,
+  Iterable<String>? searchAntecedentNames,
   String? searchConsequentName,
-  String? searchAntecedentTagCategory,
-  String? searchConsequentTagCategory,
+  Iterable<String>? searchConsequentNames,
+  ge.TagCategory? searchAntecedentTagCategory,
+  Iterable<ge.TagCategory>? searchAntecedentTagCategories,
+  ge.TagCategory? searchConsequentTagCategory,
+  Iterable<ge.TagCategory>? searchConsequentTagCategories,
   String? searchCreatorName,
   String? searchApproverName,
   String? searchStatus,
@@ -803,14 +1203,48 @@ http.Request initSearchTagImplicationsRequest({
         queryParameters: {
           if (searchNameMatches != null)
             "search[name_matches]": searchNameMatches,
-          if (searchAntecedentName != null)
-            "search[antecedent_name]": searchAntecedentName,
-          if (searchConsequentName != null)
-            "search[consequent_name]": searchConsequentName,
-          if (searchAntecedentTagCategory != null)
-            "search[antecedent_tag_category]": searchAntecedentTagCategory,
-          if (searchConsequentTagCategory != null)
-            "search[consequent_tag_category]": searchConsequentTagCategory,
+          if ((searchAntecedentNames?.isNotEmpty ?? false) ||
+              searchAntecedentName != null)
+            "search[antecedent_name]":
+                (searchAntecedentNames?.isNotEmpty ?? false)
+                    ? (searchAntecedentName != null
+                            ? searchAntecedentNames!
+                                .followedBy([searchAntecedentName])
+                            : searchAntecedentNames!)
+                        .join(",")
+                    : searchAntecedentName,
+          if ((searchConsequentNames?.isNotEmpty ?? false) ||
+              searchConsequentName != null)
+            "search[consequent_name]":
+                (searchConsequentNames?.isNotEmpty ?? false)
+                    ? (searchConsequentName != null
+                            ? searchConsequentNames!
+                                .followedBy([searchConsequentName])
+                            : searchConsequentNames!)
+                        .join(",")
+                    : searchConsequentName,
+          if ((searchAntecedentTagCategories?.isNotEmpty ?? false) ||
+              searchAntecedentTagCategory != null)
+            "search[antecedent_tag_category]":
+                (searchAntecedentTagCategories?.isNotEmpty ?? false)
+                    ? (searchAntecedentTagCategory != null
+                            ? searchAntecedentTagCategories!
+                                .followedBy([searchAntecedentTagCategory])
+                            : searchAntecedentTagCategories!)
+                        .map((e) => e.index)
+                        .join(",")
+                    : searchAntecedentTagCategory!.index,
+          if ((searchConsequentTagCategories?.isNotEmpty ?? false) ||
+              searchConsequentTagCategory != null)
+            "search[consequent_tag_category]":
+                (searchConsequentTagCategories?.isNotEmpty ?? false)
+                    ? (searchConsequentTagCategory != null
+                            ? searchConsequentTagCategories!
+                                .followedBy([searchConsequentTagCategory])
+                            : searchConsequentTagCategories!)
+                        .map((e) => e.index)
+                        .join(",")
+                    : searchConsequentTagCategory!.index,
           if (searchCreatorName != null)
             "search[creator_name]": searchCreatorName,
           if (searchApproverName != null)
@@ -851,7 +1285,7 @@ http.Request initSearchTagImplicationsRequest({
 /// * HTTP 403 if the user has hidden their favorites.
 /// * HTTP 404 if the specified user_id does not exist or user_id is not specified and the user is not authorized.
 /// {@endtemplate}
-http.Request initListFavoritesRequest({
+http.Request initFavoriteSearch({
   int? userId,
   int? limit,
   String? page,
@@ -903,7 +1337,7 @@ http.Request initListFavoritesRequest({
 /// }
 /// ```
 /// {@endtemplate}
-http.Request initCreateFavoriteRequest({
+http.Request initFavoriteCreate({
   required int postId,
   BaseCredentials? credentials,
 }) =>
@@ -922,7 +1356,7 @@ http.Request initCreateFavoriteRequest({
 /// There is no response body.
 /// Success: 204
 /// {@endtemplate}
-http.Request initDeleteFavoriteRequest({
+http.Request initFavoriteDelete({
   required int postId,
   BaseCredentials? credentials,
 }) =>
@@ -938,7 +1372,7 @@ http.Request initListFavoritesWithIdRequest({
   String? page,
   BaseCredentials? credentials,
 }) =>
-    initListFavoritesRequest(
+    initFavoriteSearch(
       userId: userId,
       credentials: credentials,
       limit: limit,
@@ -951,7 +1385,7 @@ http.Request initListFavoritesWithCredentialsRequest({
   int? limit,
   String? page,
 }) =>
-    initListFavoritesRequest(
+    initFavoriteSearch(
       credentials: credentials,
       limit: limit,
       page: page,
@@ -981,7 +1415,7 @@ http.Request initListFavoritesWithCredentialsRequest({
 /// {@template noteListing}
 /// * `id` The Note’s ID
 /// * `created_at` The time the note was created in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
-/// * `updated_at` The time the mote was last updated in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
+/// * `updated_at` The time the note was updated in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
 /// * `creator_id` The ID of the user that created the note.
 /// * `x` The X coordinate of the top left corner of the note in pixels from the top left of the post.
 /// * `y` The Y coordinate of the top left corner of the note in pixels from the top left of the post.
@@ -996,7 +1430,7 @@ http.Request initListFavoritesWithCredentialsRequest({
 ///
 /// If no results are returned:
 /// ```{"notes":[]}```
-http.Request initSearchNotesRequest({
+http.Request initNoteSearch({
   String? searchBodyMatches,
   String? searchPostId,
   String? searchPostTagsMatch,
@@ -1039,7 +1473,7 @@ http.Request initSearchNotesRequest({
 ///
 /// If successful it will return the added note in the format:
 /// {@macro noteListing}
-http.Request initCreateNoteRequest({
+http.Request initNoteCreate({
   required int notePostId,
   required int noteX,
   required int noteY,
@@ -1067,7 +1501,7 @@ http.Request initCreateNoteRequest({
 /// The base URL is ``/notes/[noteId].json`` called with `DELETE`.
 ///
 /// There is no response.
-http.Request initDeleteNoteRequest(
+http.Request initNoteDelete(
   int noteId, {
   BaseCredentials? credentials,
 }) =>
@@ -1082,7 +1516,7 @@ http.Request initDeleteNoteRequest(
 /// The base URL is ``/notes/[noteId]/revert.json`` called with PUT.
 ///
 /// * `version_id` The note version id to revert to.
-http.Request initRevertNoteRequest(
+http.Request initNoteRevert(
   int noteId, {
   required int versionId,
   BaseCredentials? credentials,
@@ -1096,6 +1530,36 @@ http.Request initRevertNoteRequest(
 
 // #endregion Notes
 // #region Users
+@Deprecated("Use initUserSearch")
+http.Request initSearchUsersRequest({
+  String? searchNameMatches,
+  String? searchAboutMe,
+  int? searchAvatarId,
+  ge.UserLevel? searchLevel,
+  ge.UserLevel? searchMinLevel,
+  ge.UserLevel? searchMaxLevel,
+  bool? searchCanUploadFree,
+  bool? searchCanApprovePosts,
+  se.UserOrder? searchOrder,
+  int? limit = 75,
+  String? page,
+  BaseCredentials? credentials,
+}) =>
+    initUserSearch(
+      searchNameMatches: searchNameMatches,
+      searchAboutMe: searchAboutMe,
+      searchAvatarId: searchAvatarId,
+      searchLevel: searchLevel,
+      searchMinLevel: searchMinLevel,
+      searchMaxLevel: searchMaxLevel,
+      searchCanUploadFree: searchCanUploadFree,
+      searchCanApprovePosts: searchCanApprovePosts,
+      searchOrder: searchOrder,
+      limit: limit,
+      page: page,
+      credentials: credentials,
+    );
+
 /// https://e621.net/users.json?search%5Bname_matches%5D=a&search%5Babout_me%5D=a&search%5Bavatar_id%5D=1&search%5Blevel%5D=10&search%5Bmin_level%5D=10&search%5Bmax_level%5D=10&search%5Bcan_upload_free%5D=true&search%5Bcan_approve_posts%5D=true&search%5Border%5D=name
 /// `/users.json` `GET`
 /// * `search[name_matches]`
@@ -1109,7 +1573,7 @@ http.Request initRevertNoteRequest(
 /// * `search[order]`
 /// * limit How many items you want to retrieve. There is a hard limit of 320 items per request. Defaults to 75.
 /// * page The page that will be returned. Can also be used with a or b + item_id to get the items after or before the specified item ID. For example a13 gets every item after item_id 13 up to the limit.
-http.Request initSearchUsersRequest({
+http.Request initUserSearch({
   String? searchNameMatches,
   String? searchAboutMe,
   int? searchAvatarId,
@@ -1143,6 +1607,15 @@ http.Request initSearchUsersRequest({
         },
         method: "GET",
         credentials: credentials);
+@Deprecated("Use initUserGet")
+http.Request initGetUserRequest(
+  int userId, {
+  BaseCredentials? credentials,
+}) =>
+    initUserGet(
+      userId,
+      credentials: credentials,
+    );
 
 /// https://e621.net/users/248688.json
 /// `/users/<User_ID>.json` `GET`
@@ -1169,12 +1642,75 @@ http.Request initSearchUsersRequest({
 ///   }
 /// }
 /// ```
-http.Request initGetUserRequest(
+http.Request initUserGet(
   int userId, {
   BaseCredentials? credentials,
 }) =>
     _baseInitRequestCredentialsOptional(
         path: "/users/$userId.json", method: "GET", credentials: credentials);
+@Deprecated("Use initUserEdit")
+http.Request initUpdateUserRequest({
+  int userId = 1234,
+  int? userCommentThreshold,
+  String? userDefaultImageSize,
+  String? userFavoriteTags,
+  String? userBlacklistedTags,
+  String? userTimeZone,
+  int? userPerPage,
+  String? userCustomStyle,
+  bool? userDescriptionCollapsedInitially,
+  bool? userHideComments,
+  bool? userReceiveEmailNotifications,
+  bool? userEnableKeyboardNavigation,
+  bool? userEnablePrivacyMode,
+  bool? userDisableUserDmails,
+  bool? userBlacklistUsers,
+  bool? userShowPostStatistics,
+  bool? userStyleUsernames,
+  bool? userShowHiddenComments,
+  bool? userEnableAutocomplete,
+  bool? userDisableCroppedThumbnails,
+  bool? userEnableSafeMode,
+  bool? userDisableResponsiveMode,
+  int? userDmailFilterAttributesId,
+  String? userDmailFilterAttributesWords,
+  String? userProfileAbout,
+  String? userProfileArtInfo,
+  int? userAvatarId = -1,
+  bool? userEnableCompactUploader,
+  BaseCredentials? credentials,
+}) =>
+    initUserEdit(
+      userId: userId,
+      userCommentThreshold: userCommentThreshold,
+      userDefaultImageSize: userDefaultImageSize,
+      userFavoriteTags: userFavoriteTags,
+      userBlacklistedTags: userBlacklistedTags,
+      userTimeZone: userTimeZone,
+      userPerPage: userPerPage,
+      userCustomStyle: userCustomStyle,
+      userDescriptionCollapsedInitially: userDescriptionCollapsedInitially,
+      userHideComments: userHideComments,
+      userReceiveEmailNotifications: userReceiveEmailNotifications,
+      userEnableKeyboardNavigation: userEnableKeyboardNavigation,
+      userEnablePrivacyMode: userEnablePrivacyMode,
+      userDisableUserDmails: userDisableUserDmails,
+      userBlacklistUsers: userBlacklistUsers,
+      userShowPostStatistics: userShowPostStatistics,
+      userStyleUsernames: userStyleUsernames,
+      userShowHiddenComments: userShowHiddenComments,
+      userEnableAutocomplete: userEnableAutocomplete,
+      userDisableCroppedThumbnails: userDisableCroppedThumbnails,
+      userEnableSafeMode: userEnableSafeMode,
+      userDisableResponsiveMode: userDisableResponsiveMode,
+      userDmailFilterAttributesId: userDmailFilterAttributesId,
+      userDmailFilterAttributesWords: userDmailFilterAttributesWords,
+      userProfileAbout: userProfileAbout,
+      userProfileArtInfo: userProfileArtInfo,
+      userAvatarId: userAvatarId,
+      userEnableCompactUploader: userEnableCompactUploader,
+      credentials: credentials,
+    );
 
 /// `/users/<User_ID>.json` `PATCH`
 ///
@@ -1211,7 +1747,7 @@ http.Request initGetUserRequest(
 ///
 /// Note: As the actual value is ignored, the value is currently optional, for
 /// if it becomes required at a later point.
-http.Request initUpdateUserRequest({
+http.Request initUserEdit({
   int userId = 1234,
   int? userCommentThreshold,
   String? userDefaultImageSize,
@@ -1303,6 +1839,7 @@ http.Request initUpdateUserRequest({
 /// https://e621.net/post_sets.json?search%5Bname%5D=*&search%5Bshortname%5D=*&search%5Bcreator_name%5D=baggie&search%5Bcreator_id%5D=427822&search%5Border%5D=name
 /// `/post_sets.json` `GET`
 /// * `search[name]` * wildcard
+/// * `search[id]` * number (??or array of numbers??)
 /// * `search[shortname]` * wildcard
 /// * `search[creator_name]` Must be a username
 /// * `search[creator_id]` Must be a user id
@@ -1310,9 +1847,12 @@ http.Request initUpdateUserRequest({
 /// * `maintainer_id` A user with permissions to add and remove posts from the set; Must be a user id.
 /// * limit How many items you want to retrieve. There is a hard limit of 320 items per request. Defaults to 75.
 /// * page The page that will be returned. Can also be used with a or b + item_id to get the items after or before the specified item ID. For example a13 gets every item after item_id 13 up to the limit.
-http.Request initSearchSetsRequest({
+http.Request initSetSearch({
   String? searchName,
   String? searchShortname,
+  // Iterable<int>? searchId,
+  Iterable<int>? searchIds,
+  int? searchId,
   String? searchCreatorName,
   int? searchCreatorId,
   se.SetOrder? searchOrder,
@@ -1328,6 +1868,13 @@ http.Request initSearchSetsRequest({
       queryParameters: {
         if (searchName != null) "search[name]": searchName,
         if (searchShortname != null) "search[shortname]": searchShortname,
+        // if (searchId?.isNotEmpty ?? false) "search[id]": searchId!.join(","),
+        if ((searchIds?.isNotEmpty ?? false) && searchId != null)
+          "search[id]": searchIds!.followedBy([searchId]).join(",")
+        else if (searchId != null)
+          "search[id]": searchId
+        else if (searchIds?.isNotEmpty ?? false)
+          "search[id]": searchIds!.join(","),
         if (searchCreatorName != null)
           "search[creator_name]": searchCreatorName,
         if (searchCreatorId != null) "search[creator_id]": searchCreatorId,
@@ -1338,15 +1885,71 @@ http.Request initSearchSetsRequest({
       },
     );
 
+@Deprecated("Use initSetSearch")
+http.Request initSearchSetsRequest({
+  String? searchName,
+  String? searchShortname,
+  // Iterable<int>? searchId,
+  Iterable<int>? searchIds,
+  int? searchId,
+  String? searchCreatorName,
+  int? searchCreatorId,
+  se.SetOrder? searchOrder,
+  int? maintainerId,
+  int? limit = 75,
+  String? page,
+  BaseCredentials? credentials,
+}) =>
+    initSearchSetsRequest(
+      searchName: searchName,
+      searchShortname: searchShortname,
+      // searchId: searchId,
+      searchIds: searchIds,
+      searchId: searchId,
+      searchCreatorName: searchCreatorName,
+      searchCreatorId: searchCreatorId,
+      searchOrder: searchOrder,
+      maintainerId: maintainerId,
+      limit: limit,
+      page: page,
+      credentials: credentials,
+    );
+
 /// https://e621.net/post_sets/35356.json
 /// `/post_sets/$setId.json` `GET`
-http.Request initGetSetRequest(
+http.Request initSetGet(
   int setId, {
   BaseCredentials? credentials,
 }) =>
     _baseInitRequestCredentialsOptional(
       path: "/post_sets/$setId.json",
       method: "GET",
+      credentials: credentials,
+    );
+@Deprecated("Use initSetGet")
+http.Request initGetSetRequest(
+  int setId, {
+  BaseCredentials? credentials,
+}) =>
+    initSetGet(setId, credentials: credentials);
+
+@Deprecated("Use initSetEdit")
+http.Request initUpdateSetRequest(
+  int setId, {
+  String? postSetName,
+  String? postSetShortname,
+  String? postSetDescription,
+  bool? postSetIsPublic,
+  bool? postSetTransferOnDelete,
+  BaseCredentials? credentials,
+}) =>
+    initSetEdit(
+      setId,
+      postSetName: postSetName,
+      postSetShortname: postSetShortname,
+      postSetDescription: postSetDescription,
+      postSetIsPublic: postSetIsPublic,
+      postSetTransferOnDelete: postSetTransferOnDelete,
       credentials: credentials,
     );
 
@@ -1356,7 +1959,7 @@ http.Request initGetSetRequest(
 /// * `post_set[description]`
 /// * `post_set[is_public]` Private sets are only visible to you. Public sets are visible to anyone, but only you and users you assign as maintainers can edit the set. Only accounts three days or older can make public sets.
 /// * `post_set[transfer_on_delete]` If "Transfer on Delete" is enabled, when a post is deleted from the site, its parent (if any) will be added to this set in its place. Disable if you want posts to simply be removed from this set with no replacement.
-http.Request initUpdateSetRequest(
+http.Request initSetEdit(
   int setId, {
   String? postSetName,
   String? postSetShortname,
@@ -1379,6 +1982,23 @@ http.Request initUpdateSetRequest(
           "post_set[transfer_on_delete]": postSetTransferOnDelete,
       },
     );
+@Deprecated("Use initSetCreate")
+http.Request initCreateSetRequest({
+  required String postSetName,
+  required String postSetShortname,
+  String? postSetDescription,
+  bool? postSetIsPublic,
+  bool? postSetTransferOnDelete,
+  BaseCredentials? credentials,
+}) =>
+    initSetCreate(
+      postSetName: postSetName,
+      postSetShortname: postSetShortname,
+      postSetDescription: postSetDescription,
+      postSetIsPublic: postSetIsPublic,
+      postSetTransferOnDelete: postSetTransferOnDelete,
+      credentials: credentials,
+    );
 
 /// `/post_sets/$setId.json` `POST`
 /// * `post_set[name]`
@@ -1394,7 +2014,7 @@ http.Request initUpdateSetRequest(
 ///
 /// Error:
 /// 422 {"errors":{"name":["must be between three and one hundred characters long"],"shortname":["must be between three and fifty characters long","must only contain numbers, lowercase letters, and underscores","must contain at least one lowercase letter or underscore"]}}
-http.Request initCreateSetRequest({
+http.Request initSetCreate({
   required String postSetName,
   required String postSetShortname,
   String? postSetDescription,
@@ -1416,12 +2036,23 @@ http.Request initCreateSetRequest({
           "post_set[transfer_on_delete]": postSetTransferOnDelete,
       },
     );
+@Deprecated("Use initSetAddPosts")
+http.Request initAddToSetRequest(
+  int setId,
+  List<int> postIds, {
+  BaseCredentials? credentials,
+}) =>
+    initSetAddPosts(
+      setId,
+      postIds,
+      credentials: credentials,
+    );
 
 /// `/post_sets/$setId/add_posts.json` `POST`
 /// * `post_ids[]` space separated list (i think)
 ///
 /// Success: `HTTP 201` with the body of the chosen set.
-http.Request initAddToSetRequest(
+http.Request initSetAddPosts(
   int setId,
   List<int> postIds, {
   BaseCredentials? credentials,
@@ -1434,12 +2065,23 @@ http.Request initAddToSetRequest(
         "post_ids[]": postIds,
       },
     );
+@Deprecated("Use initSetRemovePosts")
+http.Request initRemoveFromSetRequest(
+  int setId,
+  List<int> postIds, {
+  BaseCredentials? credentials,
+}) =>
+    initSetRemovePosts(
+      setId,
+      postIds,
+      credentials: credentials,
+    );
 
 /// `/post_sets/$setId/remove_posts.json` `POST`
 /// * `post_ids[]` space separated list (i think)
 ///
 /// Success: `201` with the body of the chosen set.
-http.Request initRemoveFromSetRequest(
+http.Request initSetRemovePosts(
   int setId,
   List<int> postIds, {
   BaseCredentials? credentials,
@@ -1452,6 +2094,11 @@ http.Request initRemoveFromSetRequest(
         "post_ids[]": postIds,
       },
     );
+@Deprecated("Use initSetGetModifiable")
+http.Request initGetModifiableSetsRequest({
+  BaseCredentials? credentials,
+}) =>
+    initSetGetModifiable(credentials: credentials);
 
 /// `/post_sets/for_select.json` `GET`
 ///
@@ -1476,7 +2123,7 @@ http.Request initRemoveFromSetRequest(
 ///   }
 /// }
 /// ```
-http.Request initGetModifiableSetsRequest({
+http.Request initSetGetModifiable({
   BaseCredentials? credentials,
 }) =>
     _baseInitRequestCredentialsRequired(
@@ -1485,11 +2132,19 @@ http.Request initGetModifiableSetsRequest({
       credentials: credentials,
     );
 
+@Deprecated("Use initSetEditPosts")
+http.Request initUpdateSetPostsRequest(
+  int setId,
+  List<int> postIds, {
+  BaseCredentials? credentials,
+}) =>
+    initSetEditPosts(setId, postIds, credentials: credentials);
+
 /// `/post_sets/$setId/update_posts.json` `POST`
 /// * `post_ids_string[]` space separated list (i think) of ALL posts in set
 ///
 /// Success: `302` with a redirect.
-http.Request initUpdateSetPostsRequest(
+http.Request initSetEditPosts(
   int setId,
   List<int> postIds, {
   BaseCredentials? credentials,
@@ -1503,18 +2158,47 @@ http.Request initUpdateSetPostsRequest(
             foldIterableForUrl(postIds, allowEmpty: false),
       },
     );
-
 // #endregion Sets
 // #region Pools
+@Deprecated("Use initPoolSearch")
+http.Request initSearchPoolsRequest({
+  String? searchNameMatches,
+  Iterable<int>? searchIds,
+  int? searchId,
+  String? searchDescriptionMatches,
+  String? searchCreatorName,
+  int? searchCreatorId,
+  bool? searchIsActive,
+  ge.PoolCategory? searchCategory,
+  se.PoolOrder? searchOrder,
+  int? limit,
+  BaseCredentials? credentials,
+}) =>
+    initPoolSearch(
+      searchNameMatches: searchNameMatches,
+      searchIds: searchIds,
+      searchId: searchId,
+      searchDescriptionMatches: searchDescriptionMatches,
+      searchCreatorName: searchCreatorName,
+      searchCreatorId: searchCreatorId,
+      searchIsActive: searchIsActive,
+      searchCategory: searchCategory,
+      searchOrder: searchOrder,
+      limit: limit,
+      credentials: credentials,
+    );
+
 /// https://e621.net/wiki_pages/2425#pools_listing
 ///
 /// The base URL is `/pools.json` called with `GET`.
 ///
 /// * `search[name_matches]` Search pool names.
-/// * `search[id]` Search for a pool ID, you can search for multiple IDs at once, separated by commas.
+/// * `search[id]` Search for a pool ID.
+/// {@macro cslParam}
 /// * `search[description_matches]` Search pool descriptions.
 /// * `search[creator_name]` Search for pools based on creator name.
 /// * `search[creator_id]` Search for pools based on creator ID.
+/// TODO: test for comma separated list support.
 /// * `search[is_active]` If the pool is active or hidden. (True/False)
 /// * `search[category]` Can either be “series” or “collection”.
 /// * `search[order]` The order that pools should be returned, can be any of: name, created_at, updated_at, post_count. If not specified it orders by updated_at
@@ -1528,14 +2212,15 @@ http.Request initUpdateSetPostsRequest(
 /// * `creator_id` the ID of the user that created the pool.
 /// * `description` The description of the pool.
 /// * `is_active` If the pool is active and still getting posts added. (True/False)
-/// * `category` Can be “series” or “collection”.
+/// * `category` Can be `series` or `collection`. *[ge.PoolCategory]*
 /// * `post_ids` An array group of posts in the pool.
 /// * `creator_name` The name of the user that created the pool.
 /// * `post_count` the amount of posts in the pool.
 /// {@endtemplate}
-http.Request initSearchPoolsRequest({
+http.Request initPoolSearch({
   String? searchNameMatches,
-  List<int>? searchId,
+  Iterable<int>? searchIds,
+  int? searchId,
   String? searchDescriptionMatches,
   String? searchCreatorName,
   int? searchCreatorId,
@@ -1550,7 +2235,12 @@ http.Request initSearchPoolsRequest({
       queryParameters: {
         if (searchNameMatches != null)
           "search[name_matches]": searchNameMatches,
-        if (searchId != null) "search[id]": searchId,
+        if ((searchIds?.isNotEmpty ?? false) && searchId != null)
+          "search[id]": searchIds!.followedBy([searchId]).join(",")
+        else if (searchIds?.isNotEmpty ?? false)
+          "search[id]": searchIds!.join(",")
+        else if (searchId != null)
+          "search[id]": searchId,
         if (searchDescriptionMatches != null)
           "search[description_matches]": searchDescriptionMatches,
         if (searchCreatorName != null)
@@ -1565,6 +2255,13 @@ http.Request initSearchPoolsRequest({
       method: "GET",
     );
 
+@Deprecated("Use initPoolGet")
+http.Request initGetPoolRequest(
+  int poolId, {
+  BaseCredentials? credentials,
+}) =>
+    initPoolGet(poolId, credentials: credentials);
+
 /// https://e621.net/wiki_pages/2425#pools_listing
 ///
 /// The base URL is `/pools/$poolId.json` called with `GET`.
@@ -1578,21 +2275,10 @@ http.Request initSearchPoolsRequest({
 /// * `search[category]` Can either be “series” or “collection”.
 /// * `search[order]` The order that pools should be returned, can be any of: name, created_at, updated_at, post_count. If not specified it orders by updated_at
 /// * `limit` The limit of how many pools should be retrieved.
+///
 /// This returns a JSON object:
-/// {@template poolListing}
-/// * `id` The ID of the pool.
-/// * `name` The name of the pool.
-/// * `created_at` The time the pool was created in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
-/// * `updated_at` The time the pool was updated in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
-/// * `creator_id` the ID of the user that created the pool.
-/// * `description` The description of the pool.
-/// * `is_active` If the pool is active and still getting posts added. (True/False)
-/// * `category` Can be “series” or “collection”.
-/// * `post_ids` An array group of posts in the pool.
-/// * `creator_name` The name of the user that created the pool.
-/// * `post_count` the amount of posts in the pool.
-/// {@endtemplate}
-http.Request initGetPoolRequest(
+/// {@macro poolListing}
+http.Request initPoolGet(
   int poolId, {
   BaseCredentials? credentials,
 }) =>
@@ -1601,10 +2287,29 @@ http.Request initGetPoolRequest(
       credentials: credentials,
       method: "GET",
     );
+@Deprecated("Use initPoolEdit")
+http.Request initUpdatePoolRequest(
+  int poolId, {
+  String? poolName,
+  String? poolDescription,
+  Iterable<int>? poolPostIds,
+  int? poolIsActive,
+  ge.PoolCategory? poolCategory,
+  BaseCredentials? credentials,
+}) =>
+    initPoolEdit(
+      poolId,
+      poolName: poolName,
+      poolDescription: poolDescription,
+      poolPostIds: poolPostIds,
+      poolIsActive: poolIsActive,
+      poolCategory: poolCategory,
+      credentials: credentials,
+    );
 
 /// https://e621.net/wiki_pages/2425#pools_update
 ///
-/// The base URL is /pools/[poolId].json called with PUT.
+/// The base URL is `/pools/$poolId.json` called with `PUT`.
 ///
 /// Only post parameters you want to update.
 ///
@@ -1612,11 +2317,12 @@ http.Request initGetPoolRequest(
 /// * `pool[description]` The description of the pool.
 /// * `pool[post_ids]` List of space delimited post ids in order of where they should be in the pool.
 /// * `pool[is_active]` Can be either 1 or 0
-/// * `pool[category]` Can be either “series” or “collection”.
+/// TODO: Test which is true and which is false and then replace w/ an according boolean parameter.
+/// * `pool[category]` Can be either `series` or `collection`.
 ///
 /// Success will return the pool in the format:
 /// {@macro poolListing}
-http.Request initUpdatePoolRequest(
+http.Request initPoolEdit(
   int poolId, {
   String? poolName,
   String? poolDescription,
@@ -1630,11 +2336,12 @@ http.Request initUpdatePoolRequest(
       queryParameters: {
         if (poolName != null) "pool[name]": poolName,
         if (poolDescription != null) "pool[description]": poolDescription,
-        if (poolPostIds != null)
-          "pool[post_ids]":
-              poolPostIds.fold("", (accumulator, elem) => "$accumulator $elem"),
-        if (poolIsActive != null) "pool[is_active]": poolIsActive,
-        if (poolCategory != null) "pool[category]": poolCategory.toJsonString(),
+        if (poolPostIds?.isNotEmpty ?? false)
+          "pool[post_ids]": poolPostIds!.join(" "),
+        // if (poolIsActive != null)
+        if (poolIsActive == 0 || poolIsActive == 1)
+          "pool[is_active]": poolIsActive,
+        if (poolCategory != null) "pool[category]": poolCategory,
       },
       method: "PUT",
       credentials: credentials,
@@ -1665,7 +2372,7 @@ http.Request initCreatePoolRequest({
       queryParameters: {
         if (poolName != null) "pool[name]": poolName,
         if (poolDescription != null) "pool[description]": poolDescription,
-        if (poolCategory != null) "pool[category]": poolCategory.toJsonString(),
+        if (poolCategory != null) "pool[category]": poolCategory,
         if (poolIsLocked != null) "pool[is_locked]": poolIsLocked,
       },
       credentials: credentials,
@@ -1698,22 +2405,39 @@ http.Request initRevertPoolRequest(
 ///
 /// {@macro limitRoot}
 /// {@macro pageRoot}
-/// * `search[id]` Search for a specific id ??you can search for multiple IDs at once, separated by commas??.
-/// * `search[ip_addr]` Must be Admin+ to use. See [postgres' documentation](https://www.postgresql.org/docs/9.3/functions-net.html) for information on how this is parsed. Specifically, "is contained within or equals" (<<=).
+/// * `search[id]` Search for a specific id.
+/// {@template cslParam}
+/// Accepts a comma separated list.
+/// {@endtemplate}
+/// * `search[ip_addr]` Must be [ge.UserLevel.admin]+ to use. See
+/// [postgres' documentation](https://www.postgresql.org/docs/9.3/functions-net.html)
+///  for information on how this is parsed. Specifically, "is contained within
+/// or equals" (<<=).
 /// {@template orderRoot}
 /// * `search[order]` The order that items should be returned, can be any of:
 /// {@endtemplate}
-/// `id_asc`, `id_desc`, `status`, `status_desc`, `updated_at_desc`. If not specified it orders by ???
-/// * `group_by` Can be either: `comment`, or `post`.
-/// * `search[body_matches]`
-/// * `search[post_id]` Search for items based on post ID. Accepts a comma separated list.
+/// `id_asc`, `id_desc`, `status`, `status_desc`~~, `updated_at_desc`~~. If not
+/// specified it orders by ??? **Note**: the docs say `updated_at_desc` is an
+/// option, and it works with the non-json endpoint, but fails if used. + there's
+/// other seeming discrepancies. All the remaining values in [se.CommentOrder]
+/// are validated to have the desired effect and not fail.
+/// * `group_by` Can be either: `comment`, or `post`. If null, server treats as `post`. **Note**: As the
+/// [se.CommentGrouping.post] option returns the posts and not the comments
+/// grouped by posts, it's recommended to leave this at the default value of
+/// [se.CommentGrouping.comment]. If null, server treats as `post`.
+/// * `search[body_matches]` Search the body text.
+/// TODO: test wildcard support.
+/// * `search[post_id]` Search for items based on post ID.
+/// {@macro cslParam}
 /// * `search[post_tags_matches]` Search by post tags.
 /// * `search[post_note_updater_name]`
 /// * `search[post_note_updater_id]`
+/// TODO: test for comma separated list support.
 /// * `search[creator_name]` Search for items based on creator name.
+/// TODO: test for comma separated list support.
 /// * `search[creator_id]` Search for items based on creator ID.
-/// * `search[is_sticky]` If the pool is sticky or hidden. (True/False)
-/// * `search[is_hidden]` If the pool is hidden or hidden. (True/False) Only usable by Moderator+
+/// * `search[is_sticky]` If the comment is sticky or not. (True/False)
+/// * `search[is_hidden]` If the comment is hidden or not. (True/False) Only usable by Moderator+
 /// * `search[do_not_bump_post]` (True/False)
 ///
 /// This returns a JSON array, for each item it returns:
@@ -1737,15 +2461,17 @@ http.Request initRevertPoolRequest(
 http.Request initSearchCommentsRequest({
   int? limit,
   String? page,
-  List<int>? searchId,
+  int? searchId,
+  Iterable<int>? searchIds,
   String? searchIpAddr,
   se.CommentOrder? searchOrder,
-  se.CommentGrouping? groupBy,
+  se.CommentGrouping? groupBy = se.CommentGrouping.comment,
   String? searchBodyMatches,
-  String? searchPostId,
+  int? searchPostId,
+  Iterable<int>? searchPostIds,
   String? searchPostTagsMatches,
   String? searchPostNoteUpdaterName,
-  String? searchPostNoteUpdaterId,
+  int? searchPostNoteUpdaterId,
   String? searchCreatorName,
   int? searchCreatorId,
   bool? searchIsSticky,
@@ -1758,13 +2484,39 @@ http.Request initSearchCommentsRequest({
       queryParameters: {
         if (limit != null) "limit": limit,
         if (page != null) "page": page,
-        if (searchId != null) "search[id]": searchId,
+        if ((searchIds?.isNotEmpty ?? false) || searchId != null)
+          "search[id]": (searchIds?.isNotEmpty ?? false)
+              ? (searchId != null
+                      ? searchIds!.followedBy([searchId])
+                      : searchIds!)
+                  .join(",")
+              : searchId,
+        // if (searchIds != null && searchId != null)
+        //   "search[id]": searchIds
+        //     ..add(searchId)
+        //     ..join(",")
+        // else if (searchIds != null)
+        //   "search[id]": searchIds.join(",")
+        // else if (searchId != null)
+        //   "search[id]": searchId,
         if (searchIpAddr != null) "search[ip_addr]": searchIpAddr,
         if (searchOrder != null) "search[order]": searchOrder,
         if (groupBy != null) "group_by": groupBy,
         if (searchBodyMatches != null)
           "search[body_matches]": searchBodyMatches,
-        if (searchPostId != null) "search[post_id]": searchPostId,
+        if ((searchPostIds?.isNotEmpty ?? false) || searchPostId != null)
+          "search[post_id]": (searchPostIds?.isNotEmpty ?? false)
+              ? (searchPostId != null
+                      ? searchPostIds!.followedBy([searchPostId])
+                      : searchIds!)
+                  .join(",")
+              : searchPostId,
+        // if (searchPostIds != null && searchPostId != null)
+        //   "search[post_id]": searchPostIds.followedBy([searchPostId]).join(",")
+        // else if (searchPostIds != null)
+        //   "search[post_id]": searchPostIds.join(",")
+        // else if (searchPostId != null)
+        //   "search[post_id]": searchPostId,
         if (searchPostTagsMatches != null)
           "search[post_tags_matches]": searchPostTagsMatches,
         if (searchPostNoteUpdaterName != null)
@@ -2156,104 +2908,69 @@ http.Request initWikiGetPageRequest(
 // #endregion Wiki
 // #endregion Requests
 
-// /post_sets/$id/update_posts method post
-// post_set[post_ids_string]
-/// TODO: Use to keep track of completed, unfinished endpoints
-/// TODO: Map to initializing and sending requests.
-enum Endpoint {
-  /// initSearchPopularRequest
-  ///
-  /// {@macro postsPopular}
-  postPopular,
-
-  /// initCreatePostRequest
-  ///
-  /// {@macro postCreate}
-  postCreate,
-
-  /// https://e621.net/wiki_pages/2425#posts_update
-  postUpdate,
-
-  /// https://e621.net/wiki_pages/2425#posts_list
-  postSearch,
-
-  /// https://e621.net/wiki_pages/2425#posts_list
-  postGet,
-
-  /// https://e621.net/wiki_pages/2425#flags_listing
-  postFlagSearch,
-
-  /// https://e621.net/wiki_pages/2425#flags_creating
-  postFlagCreate,
-
-  /// https://e621.net/wiki_pages/2425#Posts_vote
-  postVote,
-
-  /// https://e621.net/wiki_pages/2425#favorites_list
-  favoriteSearch,
-
-  /// https://e621.net/wiki_pages/2425#favorites_create
-  favoriteCreate,
-
-  /// https://e621.net/wiki_pages/2425#favorites_delete
-  favoriteDelete,
-
-  /// https://e621.net/wiki_pages/2425#tags_listing
-  tagSearch,
-
-  /// https://e621.net/wiki_pages/2425#tag_alias_listing
-  tagAliasSearch,
-
-  /// https://e621.net/wiki_pages/2425#tag_alias_listing
-  tagImplicationSearch,
-
-  /// https://e621.net/wiki_pages/2425#notes_listing
-  noteSearch,
-
-  /// https://e621.net/wiki_pages/2425#notes_create
-  noteCreate,
-
-  /// https://e621.net/wiki_pages/2425#notes_update
-  noteUpdate,
-
-  /// https://e621.net/wiki_pages/2425#notes_delete
-  noteDelete,
-
-  /// https://e621.net/wiki_pages/2425#notes_revert
-  noteRevert,
-
-  /// https://e621.net/wiki_pages/2425#pools_listing
-  poolSearch,
-
-  /// https://e621.net/wiki_pages/2425#pools_create
-  poolCreate,
-
-  /// https://e621.net/wiki_pages/2425#pools_update
-  poolUpdate,
-
-  /// https://e621.net/wiki_pages/2425#pools_revert
-  poolRevert,
-
-  /// https://e621.net/forum_topics/34583
-  userInfo,
-
-  /// https://e621.net/post_sets/7410.json
-  setInfo,
-  ;
-  /* Function get invoke => switch (this) {
-    postPopular => initSearchPopularRequest,
-    postCreate => throw UnimplementedError(),
-  }; */
-}
-
-Map<String, dynamic>? _prepareQueryParametersSafe(Map<String, dynamic>? qp) =>
+Map<String, dynamic>? _prepareQueryParametersSafe(
+  Map<String, dynamic>? qp, {
+  String? defaultSeparator,
+  Map<String, String>? joinMap,
+}) =>
     qp
       ?..updateAll((k, v) {
         dynamic recurse(val) => switch (val) {
               String v1 => v1,
+              Iterable v1 when (joinMap?[k] ?? _doNotJoin) != _doNotJoin =>
+                v1.map(recurse).join(joinMap![k]!),
+              Iterable v1 when defaultSeparator != null =>
+                v1.map(recurse).join(defaultSeparator),
               Iterable v1 => v1.map(recurse),
-              ge.ApiQueryParameter v1 => v1.query,
+              ge.ApiQueryParameter _ => val.query,
               _ => val.toString(),
             };
         return recurse(v);
       });
+const _doNotJoin = "DON'T JOIN";
+const Map<String, String> _joinMap = {
+  "search[antecedent_tag_category]": ",",
+  "search[consequent_tag_category]": ",",
+  "user[favorite_tags]": " ",
+  "user[blacklisted_tags]": " ",
+};
+
+/* final class IterableOrSingle<T> {
+  final T? single;
+  final Iterable<T>? iterable;
+
+  const IterableOrSingle.single(T this.single) : iterable = null;
+  const IterableOrSingle.iterable(Iterable<T> this.iterable) : single = null;
+  IterableOrSingle.iterableChecked(Iterable<T> iterable)
+      : single = null,
+        iterable = iterable.isNotEmpty
+            ? iterable
+            : throw ArgumentError.value(
+                iterable, "iterable", "Must not be empty");
+  IterableOrSingle.checked({this.single, this.iterable}) {
+    if (single == null && (iterable?.isEmpty ?? true)) {
+      throw ArgumentError.value((single, iterable), "(single, iterable)",
+          "Must be at least 1 value between iterable and single");
+    }
+  }
+
+  String join({
+    String separator = "",
+    String Function(T)? toString,
+  }) =>
+      toString == null
+          ? (iterable?.isNotEmpty ?? false)
+              ? (single != null
+                      ? iterable!.followedBy([single as T])
+                      : iterable!)
+                  .join(separator)
+              : single.toString()
+          : (iterable?.isNotEmpty ?? false)
+              ? (single != null
+                      ? iterable!.followedBy([single as T])
+                      : iterable!)
+                  .map((e) => toString(e))
+                  .join(separator)
+              : toString(single as T);
+}
+ */

@@ -142,7 +142,7 @@ abstract class User with BaseModel {
         "is_banned": isBanned,
         "can_approve_posts": canApprovePosts,
         "can_upload_free": canUploadFree,
-        "level_string": levelString.jsonString,
+        "level_string": levelString.toJson(),
         "avatar_id": avatarId,
       };
 }

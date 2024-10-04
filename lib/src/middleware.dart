@@ -71,13 +71,23 @@ Future<http.StreamedResponse> sendRequestStreamed(
   if (t >= currentRateLimit || overrideRateLimit) {
     return doTheThing();
   } else {
-    if (useBurst && burstTimes.length < currentBurstLimit) {
-      final ts = DateTime.timestamp();
-      burstTimes.add(ts);
-      Future.delayed(currentRateLimit, () => burstTimes.remove(ts)).ignore();
-      return client.send(
-          request) /* ..then((v) => _responseStreamController.add((v, ts))).ignore() */;
-    }
+    // if (useBurst && burstTimes.length < currentBurstLimit) {
+    //   doTheThing() {
+    //     final ts = DateTime.timestamp();
+    //     burstTimes.add(ts);
+    //     print(burstTimes.length);
+    //     // Future.delayed(currentRateLimit, () => burstTimes.remove(ts)).ignore();
+    //     return client.send(request)
+    //       ..then((v) => burstTimes.remove(
+    //           ts)) /* ..then((v) => _responseStreamController.add((v, ts))).ignore() */;
+    //   }
+
+    //   var t = DateTime.timestamp()
+    //       .difference(burstTimes.lastOrNull ?? timeOfLastRequest);
+    //   return t >= softRateLimit || overrideRateLimit
+    //       ? doTheThing()
+    //       : Future.delayed(softRateLimit - t, doTheThing);
+    // }
     return Future.delayed(currentRateLimit - t, doTheThing);
   }
 }

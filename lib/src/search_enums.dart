@@ -68,9 +68,29 @@ enum PoolOrder with ApiQueryParameter {
 enum CommentOrder with ApiQueryParameter {
   idAsc._default("id_asc"),
   idDesc._default("id_desc"),
-  status._default("status"),
-  statusDesc._default("status_desc"),
-  updatedAtDesc._default("updated_at_desc");
+  postIdDesc._default("post_id_desc"),
+  // postIdAsc._default("post_id_asc"),
+  // updatedAtDesc._default("updated_at_desc"),
+  // updatedAtAsc._default("updated_at_asc"),
+  // status._default("status"),
+  // statusDesc._default("status_desc"),
+  scoreDesc._default("score_desc");
+
+  // static const expectedDuds = {
+  //   status,
+  //   statusDesc,
+  //   postIdAsc,
+  // };
+  // static const disallowed = {
+  //   updatedAtDesc,
+  //   updatedAtAsc,
+  // };
+  // static const validated = {
+  //   idAsc,
+  //   idDesc,
+  //   postIdDesc,
+  //   scoreDesc,
+  // };
 
   @override
   final String query;
@@ -81,21 +101,60 @@ enum CommentOrder with ApiQueryParameter {
   factory CommentOrder(String json) => switch (json) {
         "id_asc" => idAsc,
         "id_desc" => idDesc,
-        "status" => status,
-        "status_desc" => statusDesc,
-        "updated_at_desc" => updatedAtDesc,
+        "post_asc_desc" => postIdDesc,
+        // "post_id" => postIdAsc,
+        // "updated_at_desc" => updatedAtDesc,
+        // "updated_at_asc" => updatedAtAsc,
+        // "status" => status,
+        // "status_desc" => statusDesc,
+        "score_desc" => scoreDesc,
         _ => throw ArgumentError.value(
             json,
             "json",
             'must be a value of '
                 '"id_asc", '
                 '"id_desc", '
-                '"status", '
-                '"status_desc", '
-                'or "updated_at_desc".',
+                '"post_id_desc", '
+                // '"post_id", '
+                // '"updated_at_desc", '
+                // '"updated_at_asc", '
+                // '"status", '
+                // '"status_desc", '
+                'or "score_desc".',
           ),
       };
 }
+// enum CommentOrder with ApiQueryParameter {
+//   idAsc._default("id_asc"),
+//   idDesc._default("id_desc"),
+//   status._default("status"),
+//   statusDesc._default("status_desc"),
+//   updatedAtDesc._default("updated_at_desc");
+
+//   @override
+//   final String query;
+
+//   @override
+//   String toString() => query;
+//   const CommentOrder._default(this.query);
+//   factory CommentOrder(String json) => switch (json) {
+//         "id_asc" => idAsc,
+//         "id_desc" => idDesc,
+//         "status" => status,
+//         "status_desc" => statusDesc,
+//         "updated_at_desc" => updatedAtDesc,
+//         _ => throw ArgumentError.value(
+//             json,
+//             "json",
+//             'must be a value of '
+//                 '"id_asc", '
+//                 '"id_desc", '
+//                 '"status", '
+//                 '"status_desc", '
+//                 'or "updated_at_desc".',
+//           ),
+//       };
+// }
 
 enum CommentGrouping with ApiQueryParameter {
   comment._default("comment"),

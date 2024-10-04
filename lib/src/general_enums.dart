@@ -1,45 +1,58 @@
+import "dart:ui" show Color;
+
 mixin ApiQueryParameter on Enum {
   String get query;
 }
 
-enum PoolCategory with ApiQueryParameter {
+mixin JsonEnum on Enum {
+  dynamic toJson();
+}
+
+enum PoolCategory with ApiQueryParameter, JsonEnum {
   collection,
   series;
 
   @override
   String get query => name;
 
+  @override
   dynamic toJson() => name;
-  static PoolCategory fromJson(dynamic json) => _fromJsonString(json);
-  static PoolCategory fromJsonNonStrict(dynamic json) =>
-      _fromJsonString(json.toString().toLowerCase());
-
+  static PoolCategory fromJson(dynamic json, [String? key]) =>
+      switch (key != null ? json[key] : json) {
+        "collection" => PoolCategory.collection,
+        "series" => PoolCategory.series,
+        dynamic v => throw UnsupportedError("Value $v not supported, "
+            "must be `collection` or `series`.\n\tkey: $key\n\tjson: $json"),
+      };
+  static PoolCategory fromJsonNonStrict(dynamic json, [String? key]) =>
+      switch ((key != null ? json[key] : json).toString().toLowerCase()) {
+        "collection" => PoolCategory.collection,
+        "series" => PoolCategory.series,
+        dynamic v => throw UnsupportedError("Value $v not supported, "
+            "must be `collection` or `series`.\n\tkey: $key\n\tjson: $json"),
+      };
+  @Deprecated("Use query")
   String toJsonString() => name;
-  @Deprecated("Use PoolCategory.fromJson")
-  static PoolCategory fromJsonString(String name) => _fromJsonString(name);
-  static PoolCategory _fromJsonString(String name) => switch (name) {
-        "collection" => collection,
-        "series" => series,
+  @Deprecated("Use query")
+  String toParamString() => name;
+  static PoolCategory fromParamString(String name) => switch (name) {
+        "collection" => PoolCategory.collection,
+        "series" => PoolCategory.series,
         _ => throw UnsupportedError(
             "Value $name not supported, must be `collection` or `series`.",
           ),
       };
-  @Deprecated("Use PoolCategory.fromJsonNonStrict")
-  static PoolCategory fromJsonStringNonStrict(String name) =>
-      _fromJsonString(name.toLowerCase());
-  String toParamString() => name;
-  static PoolCategory fromParamString(String name) => _fromJsonString(name);
 }
 
-enum UserLevel {
-  anonymous._default(0, 0, 9),
-  blocked._default(10, 10, 11),
-  member._default(11, 20, 21),
-  privileged._default(21, 30, 31),
-  formerStaff._default(31, 34, 35),
-  janitor._default(35, 35, 36),
-  moderator._default(36, 40, 41),
-  admin._default(41, 50, 51);
+enum UserLevel with JsonEnum {
+  anonymous._default(0, 0, 9, "Anonymous"),
+  blocked._default(10, 10, 11, "Blocked"),
+  member._default(11, 20, 21, "Member"),
+  privileged._default(21, 30, 31, "Privileged"),
+  formerStaff._default(31, 34, 35, "Former Staff"),
+  janitor._default(35, 35, 36, "Janitor"),
+  moderator._default(36, 40, 41, "Moderator"),
+  admin._default(41, 50, 51, "Admin");
 
   static const anonymousLevel = 0;
   static const blockedLevel = 10;
@@ -52,10 +65,15 @@ enum UserLevel {
   final int min;
   final int value;
   final int max;
+  final String namePretty;
+
+  @override
+  dynamic toJson() => namePretty;
   @override
   String toString() => namePretty;
+  @Deprecated("Use toJson")
   String get jsonString => namePretty;
-  String get namePretty => "${name[0].toUpperCase()}${name.substring(1)}";
+  // String get namePretty => "${name[0].toUpperCase()}${name.substring(1)}";
   int get level => switch (this) {
         anonymous => anonymousLevel,
         blocked => blockedLevel,
@@ -66,9 +84,24 @@ enum UserLevel {
         moderator => moderatorLevel,
         admin => adminLevel,
       };
-  const UserLevel._default(this.min, this.value, this.max);
-  // static UserLevel fromJsonString(String json) => switch (json) {
-  // factory UserLevel.fromJsonString(String json) => switch (json) {
+  const UserLevel._default(this.min, this.value, this.max, this.namePretty);
+  factory UserLevel.fromJson(dynamic json, [String? key]) =>
+      switch (key != null ? json[key] : json) {
+        "Anonymous" => anonymous,
+        "Blocked" => blocked,
+        "Member" => member,
+        "Privileged" => privileged,
+        "Former Staff" => formerStaff,
+        "Janitor" => janitor,
+        "Moderator" => moderator,
+        "Admin" => admin,
+        dynamic v => throw ArgumentError.value(
+            (v, key, json),
+            "(output, key, json)",
+            'must be a value of "Anonymous", "Blocked", "Member", "Privileged"'
+                ', "Former Staff", "Janitor", "Moderator", or "Admin".',
+          ),
+      };
   factory UserLevel(String json) => switch (json) {
         "Anonymous" => anonymous,
         "Blocked" => blocked,
@@ -87,21 +120,13 @@ enum UserLevel {
       };
   factory UserLevel.fromInt(int json) => switch (json) {
         == anonymousLevel => anonymous,
-        // int t when t > anonymous.min && t < anonymous.max => anonymous,
         == blockedLevel => blocked,
-        // int t when t > blocked.min && t < blocked.max => blocked,
         == memberLevel => member,
-        // int t when t > member.min && t < member.max => member,
         == privilegedLevel => privileged,
-        // int t when t > privileged.min && t < privileged.max => privileged,
         == formerStaffLevel => formerStaff,
-        // int t when t > formerStaff.min && t < formerStaff.max => formerStaff,
         == janitorLevel => janitor,
-        // int t when t > janitor.min && t < janitor.max => janitor,
         == moderatorLevel => moderator,
-        // int t when t > moderator.min && t < moderator.max => moderator,
         == adminLevel => admin,
-        // int t when t > admin.min && t < admin.max => admin,
         _ => throw ArgumentError.value(
             json,
             "json",
@@ -195,12 +220,9 @@ enum Rating with SearchableEnum {
   String get suffixLong => name;
   const Rating();
   factory Rating.fromTagText(String str) => switch (str) {
-        "e" => explicit,
-        "explicit" => explicit,
-        "q" => questionable,
-        "questionable" => questionable,
-        "s" => safe,
-        "safe" => safe,
+        "e" || "explicit" => explicit,
+        "q" || "questionable" => questionable,
+        "s" || "safe" => safe,
         _ => throw UnsupportedError("type not supported: $str"),
       };
   factory Rating.fromText(String str) => switch (str) {
@@ -266,9 +288,8 @@ enum Rating with SearchableEnum {
                 (explicit, safe) => questionable,
                 (questionable, explicit) => safe,
                 (explicit, questionable) => safe,
-                (safe, safe) => throw StateError("Should be impossible"),
-                (questionable, questionable) =>
-                  throw StateError("Should be impossible"),
+                (safe, safe) ||
+                (questionable, questionable) ||
                 (explicit, explicit) =>
                   throw StateError("Should be impossible"),
               }
@@ -289,9 +310,8 @@ enum Rating with SearchableEnum {
                 (explicit, safe) => questionable,
                 (questionable, explicit) => safe,
                 (explicit, questionable) => safe,
-                (safe, safe) => throw StateError("Should be impossible"),
-                (questionable, questionable) =>
-                  throw StateError("Should be impossible"),
+                (safe, safe) ||
+                (questionable, questionable) ||
                 (explicit, explicit) =>
                   throw StateError("Should be impossible"),
               }
@@ -306,4 +326,98 @@ enum Rating with SearchableEnum {
     }
     return r;
   }
+}
+
+/// https://e621.net/wiki_pages/11262
+enum TagCategory with ApiQueryParameter {
+  /// 0
+  general,
+
+  /// 1
+  artist,
+
+  /// 2; WHY
+  _error,
+
+  /// 3
+  copyright,
+
+  /// 4
+  character,
+
+  /// 5
+  species,
+
+  /// 6
+  invalid,
+
+  /// 7
+  meta,
+
+  /// 8
+  lore;
+
+  static const artistColor = Color(0xFFF2AC08);
+  static const copyrightColor = Color(0xFFDD00DD);
+  static const characterColor = Color(0xFF00AA00);
+  static const speciesColor = Color(0xFFED5D1F);
+  static const generalColor = Color(0xFFB4C7D9);
+  static const loreColor = Color(0xFF228822);
+  static const metaColor = Color(0xFFFFFFFF);
+  static const invalidColor = Color(0xFFFF3D3D);
+  // TODO: Remove from switch, make final member.
+  Color get color => switch (this) {
+        artist => artistColor,
+        copyright => copyrightColor,
+        character => characterColor,
+        species => speciesColor,
+        general => generalColor,
+        lore => loreColor,
+        meta => metaColor,
+        invalid => invalidColor,
+        _error => throw UnsupportedError(
+            "This value is not valid. Cannot use TagCategory._error."), //Color(0x00000000)
+      };
+  bool get isTrueCategory => this != _error;
+  bool get isValidCategory => this != _error && this != invalid;
+  static const String categoryNameRegExpStr =
+      "artist|character|copyright|species|general|meta|lore|invalid";
+  dynamic toJson() => index.toString();
+  factory TagCategory.fromJson(dynamic json, [String? key]) {
+    final v = key != null ? json[key] : json;
+    return v is! String || int.tryParse(v) != null
+        ? switch (v is int ? v : int.tryParse(v as String)) {
+            0 => TagCategory.general,
+            1 => TagCategory.artist,
+            3 => TagCategory.copyright,
+            4 => TagCategory.character,
+            5 => TagCategory.species,
+            6 => TagCategory.invalid,
+            7 => TagCategory.meta,
+            8 => TagCategory.lore,
+            // 2 => TagCategory._error,
+            2 => throw UnsupportedError(
+                "This value is not valid. Cannot use TagCategory._error."),
+            null => TagCategory.fromName(v),
+            _ => throw UnsupportedError("type not supported"),
+          }
+        : TagCategory.fromName(v);
+  }
+  factory TagCategory.fromName(String name) => switch (name) {
+        "general" => TagCategory.general,
+        "artist" => TagCategory.artist,
+        "copyright" => TagCategory.copyright,
+        "character" => TagCategory.character,
+        "species" => TagCategory.species,
+        "invalid" => TagCategory.invalid,
+        "meta" => TagCategory.meta,
+        "lore" => TagCategory.lore,
+        // "_error" => TagCategory._error,
+        "_error" => throw UnsupportedError(
+            "This value is not valid. Cannot use TagCategory._error."),
+        _ => throw UnsupportedError("type not supported"),
+      };
+
+  @override
+  String get query => index.toString();
 }

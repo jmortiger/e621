@@ -66,6 +66,9 @@ enum Order with SearchableEnum {
   /// Oldest to newest
   id("id"),
 
+  /// Newest to oldest; default
+  idDesc("id_desc"),
+
   /// Orders posts randomly *
   random("random"),
 
@@ -87,11 +90,20 @@ enum Order with SearchableEnum {
   /// Least tags first
   tagCountAsc("tagcount_asc"),
 
+  /// Most comments first; equal to [commentCount]
+  commentCountDesc("comment_count_desc"),
+
   /// Most comments first
   commentCount("comment_count"),
 
+  /// ?
+  comment("comment"),
+
   /// Least comments first
   commentCountAsc("comment_count_asc"),
+
+  /// ?
+  commentAsc("comment_asc"),
 
   /// Posts with the newest comments
   commentBumped("comment_bumped"),
@@ -120,18 +132,158 @@ enum Order with SearchableEnum {
   /// Sorts by last update sequence
   change("change"),
 
+  /// Sorts by last update sequence
+  changeAsc("change_asc"),
+
+  /// Sorts by last update sequence; same as [change]
+  changeDesc("change_desc"),
+
   /// Video duration longest to shortest
   duration("duration"),
 
+  /// Video duration longest to shortest; same as [duration]
+  durationDesc("duration_desc"),
+
   /// Video duration shortest to longest
-  durationAsc("duration_asc");
+  durationAsc("duration_asc"),
+
+  /// # of artist tags, infinity -> 0
+  artTags("arttags"),
+
+  /// # of artist tags, 0 -> infinity
+  artTagsAsc("arttags_asc"),
+
+  /// # of character tags, infinity -> 0
+  charTags("chartags"),
+
+  /// # of character tags, 0 -> infinity
+  charTagsAsc("chartags_asc"),
+
+  /// # of copyright tags, infinity -> 0
+  copyTags("copytags"),
+
+  /// # of copyright tags, 0 -> infinity
+  copyTagsAsc("copytags_asc"),
+
+  /// # of species tags, infinity -> 0
+  specTags("spectags"),
+
+  /// # of species tags, 0 -> infinity
+  specTagsAsc("spectags_asc"),
+
+  /// # of general tags, infinity -> 0
+  genTags("gentags"),
+
+  /// # of general tags, 0 -> infinity
+  genTagsAsc("gentags_asc"),
+
+  /// # of meta tags, infinity -> 0
+  metaTags("metatags"),
+
+  /// # of meta tags, 0 -> infinity
+  metaTagsAsc("metatags_asc"),
+
+  /// # of lore tags, infinity -> 0
+  lorTags("lortags"),
+
+  /// # of lore tags, 0 -> infinity
+  lorTagsAsc("lortags_asc"),
+
+  /// # of invalid tags, infinity -> 0
+  invTags("invtags"),
+
+  /// # of invalid tags, 0 -> infinity
+  invTagsAsc("invtags_asc"),
+  ;
+  static const idSuffix = "id";
+  static const idDescSuffix = "id_desc";
+  static const randomSuffix = "random";
+  static const scoreSuffix = "score";
+  static const scoreAscSuffix = "score_asc";
+  static const favCountSuffix = "favcount";
+  static const favCountAscSuffix = "favcount_asc";
+  static const tagCountSuffix = "tagcount";
+  static const tagCountAscSuffix = "tagcount_asc";
+  static const commentCountDescSuffix = "comment_count_desc";
+  static const commentCountSuffix = "comment_count";
+  static const commentSuffix = "comment";
+  static const commentCountAscSuffix = "comment_count_asc";
+  static const commentAscSuffix = "comment_asc";
+  static const commentBumpedSuffix = "comment_bumped";
+  static const commentBumpedAscSuffix = "comment_bumped_asc";
+  static const mPixelsSuffix = "mpixels";
+  static const mPixelsAscSuffix = "mpixels_asc";
+  static const fileSizeSuffix = "filesize";
+  static const fileSizeAscSuffix = "filesize_asc";
+  static const landscapeSuffix = "landscape";
+  static const portraitSuffix = "portrait";
+  static const changeSuffix = "change";
+  static const changeAscSuffix = "change_asc";
+  static const changeDescSuffix = "change_desc";
+  static const durationSuffix = "duration";
+  static const durationDescSuffix = "duration_desc";
+  static const durationAscSuffix = "duration_asc";
+  static const artTagsSuffix = "arttags";
+  static const artTagsAscSuffix = "arttags_asc";
+  static const charTagsSuffix = "chartags";
+  static const charTagsAscSuffix = "chartags_asc";
+  static const copyTagsSuffix = "copytags";
+  static const copyTagsAscSuffix = "copytags_asc";
+  static const specTagsSuffix = "spectags";
+  static const specTagsAscSuffix = "spectags_asc";
+  static const genTagsSuffix = "gentags";
+  static const genTagsAscSuffix = "gentags_asc";
+  static const metaTagsSuffix = "metatags";
+  static const metaTagsAscSuffix = "metatags_asc";
+  static const lorTagsSuffix = "lortags";
+  static const lorTagsAscSuffix = "lortags_asc";
+  static const invTagsSuffix = "invtags";
+  static const invTagsAscSuffix = "invtags_asc";
 
   static const matcherNonStrictStr = "($prefix)([^\\s]+)";
-  static const matcherStr = "($prefix)(id|random|score|score_asc|"
-      "favcount|favcount_asc|tagcount|tagcount_asc|comment_count|"
-      "comment_count_asc|comment_bumped|comment_bumped_asc|mpixels|"
-      "mpixels_asc|filesize|filesize_asc|landscape|portrait|change|"
-      r"duration|duration_asc)(?=\s|$)";
+  static const matcherStr = "($prefix)"
+      "(id(?:_desc|_asc)*"
+      "|random"
+      "|score(?:_desc|_asc)*"
+      "|favcount(?:_desc|_asc)*"
+      "|tagcount"
+      "|tagcount_asc"
+      "|comment_count_desc"
+      "|comment_count"
+      "|comment"
+      "|comment_count_asc"
+      "|comment_asc"
+      "|comment_bumped"
+      "|comment_bumped_asc"
+      "|mpixels"
+      "|mpixels_asc"
+      "|filesize"
+      "|filesize_asc"
+      "|landscape"
+      "|portrait"
+      "|change"
+      "|change_asc"
+      "|change_desc"
+      "|duration"
+      "|duration_asc"
+      "|arttags"
+      "|chartags"
+      "|copytags"
+      "|spectags"
+      "|gentags"
+      "|metatags"
+      "|lortags"
+      "|invtags"
+      "|arttags_asc"
+      "|chartags_asc"
+      "|copytags_asc"
+      "|spectags_asc"
+      "|gentags_asc"
+      "|metatags_asc"
+      "|lortags_asc"
+      "|invtags_asc"
+      ")"
+      r"(?=\s|$)";
   static RegExp get matcherGenerated => RegExp(matcherStr);
   static const prefix = "order:";
   final String tagSuffix;
@@ -141,8 +293,9 @@ enum Order with SearchableEnum {
 
   const Order(this.tagSuffix);
   factory Order.fromTagText(String tagText) =>
-      switch (tagText.replaceAll(("$prefix|${r"\s"}"), "")) {
+      switch (tagText.replaceAll(("$prefix|${r"\s"}"), "").toLowerCase()) {
         "id" => id,
+        "id_desc" => idDesc,
         "random" => random,
         "score" => score,
         "score_asc" => scoreAsc,
@@ -150,8 +303,11 @@ enum Order with SearchableEnum {
         "favcount_asc" => favCountAsc,
         "tagcount" => tagCount,
         "tagcount_asc" => tagCountAsc,
+        "comment_count_desc" => commentCount,
         "comment_count" => commentCount,
+        "comment" => commentCount,
         "comment_count_asc" => commentCountAsc,
+        "comment_asc" => commentCountAsc,
         "comment_bumped" => commentBumped,
         "comment_bumped_asc" => commentBumpedAsc,
         "mpixels" => mPixels,
@@ -161,54 +317,69 @@ enum Order with SearchableEnum {
         "landscape" => landscape,
         "portrait" => portrait,
         "change" => change,
+        "change_asc" => changeAsc,
+        "change_desc" => changeDesc,
         "duration" => duration,
         "duration_asc" => durationAsc,
+        "arttags" => artTags,
+        "chartags" => charTags,
+        "copytags" => copyTags,
+        "spectags" => specTags,
+        "gentags" => genTags,
+        "metatags" => metaTags,
+        "lortags" => lorTags,
+        "invtags" => invTags,
+        "arttags_asc" => artTagsAsc,
+        "chartags_asc" => charTagsAsc,
+        "copytags_asc" => copyTagsAsc,
+        "spectags_asc" => specTagsAsc,
+        "gentags_asc" => genTagsAsc,
+        "metatags_asc" => metaTagsAsc,
+        "lortags_asc" => lorTagsAsc,
+        "invtags_asc" => invTagsAsc,
         _ => throw ArgumentError.value(tagText, "tagText", "Value not of type"),
       };
   factory Order.fromText(String text) =>
-      switch (text.replaceAll(("$prefix|${r"\s"}"), "")) {
+      switch (text.replaceAll(("$prefix|${r"\s"}"), "").toLowerCase()) {
         "id" => id,
-        String t when t == id.name => id,
+        "id_desc" => idDesc,
         "random" => random,
-        String t when t == random.name => random,
         "score" => score,
-        String t when t == score.name => score,
         "score_asc" => scoreAsc,
-        String t when t == scoreAsc.name => scoreAsc,
         "favcount" => favCount,
-        String t when t == favCount.name => favCount,
         "favcount_asc" => favCountAsc,
-        String t when t == favCountAsc.name => favCountAsc,
         "tagcount" => tagCount,
-        String t when t == tagCount.name => tagCount,
         "tagcount_asc" => tagCountAsc,
-        String t when t == tagCountAsc.name => tagCountAsc,
         "comment_count" => commentCount,
-        String t when t == commentCount.name => commentCount,
+        "comment" => commentCount,
         "comment_count_asc" => commentCountAsc,
-        String t when t == commentCountAsc.name => commentCountAsc,
+        "comment_asc" => commentCountAsc,
         "comment_bumped" => commentBumped,
-        String t when t == commentBumped.name => commentBumped,
         "comment_bumped_asc" => commentBumpedAsc,
-        String t when t == commentBumpedAsc.name => commentBumpedAsc,
         "mpixels" => mPixels,
-        String t when t == mPixels.name => mPixels,
         "mpixels_asc" => mPixelsAsc,
-        String t when t == mPixelsAsc.name => mPixelsAsc,
         "filesize" => fileSize,
-        String t when t == fileSize.name => fileSize,
         "filesize_asc" => fileSizeAsc,
-        String t when t == fileSizeAsc.name => fileSizeAsc,
         "landscape" => landscape,
-        String t when t == landscape.name => landscape,
         "portrait" => portrait,
-        String t when t == portrait.name => portrait,
         "change" => change,
-        String t when t == change.name => change,
         "duration" => duration,
-        String t when t == duration.name => duration,
         "duration_asc" => durationAsc,
-        String t when t == durationAsc.name => durationAsc,
+        "arttags" => artTags,
+        "chartags" => charTags,
+        "copytags" => copyTags,
+        "spectags" => specTags,
+        "gentags" => genTags,
+        "metatags" => metaTags,
+        "lortags" => lorTags,
+        "invtags" => invTags,
+        "arttags_asc" => artTagsAsc,
+        "chartags_asc" => charTagsAsc,
+        "copytags_asc" => copyTagsAsc,
+        "spectags_asc" => specTagsAsc,
+        "gentags_asc" => genTagsAsc,
+        "metatags_asc" => metaTagsAsc,
+        "lortags_asc" => lorTagsAsc,
         _ => throw ArgumentError.value(text, "text", "Value not of type"),
       };
   static Order? retrieve(String str) {
