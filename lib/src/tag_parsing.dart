@@ -34,6 +34,27 @@ const allowedAnywhereInTagName = "[^$disallowedInTagName]";
 const e6ValidMetaTagCharacters = ':!.-/*" <>=';
 const validTag =
     '(?:[^$disallowedAsFirstCharacterInTagName])$allowedAnywhereInTagName*';
+const tagWithQuotePre = r'(?:description|note|source|delreason):"';
+
+/// Matches the position preceding a potential tag.
+///
+/// Preceded by one of:
+/// 1. the start of line,
+/// 1. a whitespace character, or,
+/// 1. a closed double quote bound metatag that allows quotes (ala [tagWithQuotePre]).
+const potentialTagStartPosition = '(?<=\\s|^|$tagWithQuotePre[^"]*")';
+
+/// Matches the position preceding a tag.
+///
+/// Preceded by one of:
+/// 1. the start of line,
+/// 1. a whitespace character not preceded by an open double quote bound metatag
+/// that allows quotes (ala [tagWithQuotePre]), or,
+/// 1. a closed double quote bound metatag that allows quotes (ala [tagWithQuotePre]).
+///
+/// and then followed by at least 1 non-whitespace character.
+const tagStartPosition =
+    '(?<=(?<!$tagWithQuotePre[^"]*)\\s|^|$tagWithQuotePre[^"]*")(?=\\S)';
 
 /// Successful matches are not necessarily valid, but they are parsed as separate tags.
 ///
@@ -41,13 +62,26 @@ const validTag =
 /// formatted metatag supporting text searching (e.g. description, note, source,
 /// delreason), either the next `"` or, if there is no next `"`, the next
 /// whitespace character is the end of that token.
-const tagTokenizer = r'(?<=\s|^|(?:description|note|source|delreason):"[^"]*")'
-    r'([^\s]+'
+///
+/// Results in `(?<=\s|^|(?:description|note|source|delreason):"[^"]*")(\S+(?:(?:(?<=(?:description|note|source|delreason):"\S*)[^"]*?(?:"|(?=[^"]*$)))|(?=\s|$)))`
+const tagTokenizer = '$potentialTagStartPosition'
+// Match
+    r'('
+    // All non whitespace characters (w/ at least 1)
+    r'\S+'
     r'(?:'
+    // If...
     r'(?:'
-    r'(?<=(?:description|note|source|delreason):"[^\s]*?)'
-    r'[^"]*?(?:"|(?:(?=[^"]*$)\S*))'
-    r')|(?=\s|$)'
+    // ...preceded by tagWithQuotePre & non whitespace characters...
+    r'(?<='
+    '$tagWithQuotePre'
+    r'\S*'
+    r')'
+    // ...lazy match everything that's not a `"` to the next `"`,
+    // if there is one before the end
+    r'[^"]*?(?:"|(?=[^"]*$))'
+    r')'
+    r'|(?=\s|$)'
     r')'
     r')';
 
@@ -195,6 +229,7 @@ enum Order with SearchableEnum {
   /// # of invalid tags, 0 -> infinity
   invTagsAsc("invtags_asc"),
   ;
+
   static const idSuffix = "id";
   static const idDescSuffix = "id_desc";
   static const randomSuffix = "random";
