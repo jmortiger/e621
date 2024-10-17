@@ -1,0 +1,29 @@
+version: 1
+transforms:
+  - title: "Rename to 'initSetGet'"
+    date: 2024-10-09
+    bulkApply: true
+    element:
+      uris: [ 'package:e621/e621.dart', 'package:e621/e621_api.dart' ]
+      function: 'initGetSetRequest'
+    changes:
+      - kind: 'rename'
+        newName: 'initSetGet'
+  - title: "Rename to 'initSetEdit'"
+    date: 2024-10-09
+    bulkApply: true
+    element:
+      uris: [ 'package:e621/e621.dart', 'package:e621/e621_api.dart' ]
+      function: 'initUpdateSetRequest'
+    changes:
+      - kind: 'rename'
+        newName: 'initSetEdit'
+  - title: "Rename to 'initSetSearch'"
+    date: 2024-10-09
+    bulkApply: true
+    element:
+      uris: [ 'package:e621/e621.dart', 'package:e621/e621_api.dart' ]
+      function: 'initSearchSetsRequest'
+    changes:
+      - kind: 'rename'
+        newName: 'initSetSearch'

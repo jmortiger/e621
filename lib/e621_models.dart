@@ -3,4 +3,6 @@
 library;
 
 export 'src/models.dart';
+export 'src/model.dart' show BaseModel;
 export 'src/general_enums.dart';
+export 'src/model_enums.dart';

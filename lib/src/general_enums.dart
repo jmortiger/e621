@@ -6,6 +6,14 @@ mixin ApiQueryParameter on Enum {
 
 mixin JsonEnum on Enum {
   dynamic toJson();
+  static dynamic fromJsonGetValue(dynamic json, String? key) =>
+      key != null ? json[key] : json;
+  static dynamic fromJsonNonStrictGetValue(dynamic json, String? key) =>
+      (key != null ? json[key] : json).toString().toLowerCase();
+  static dynamic fromJsonThrow(dynamic v, Iterable<String> values, dynamic json,
+          String? key) =>
+      throw UnsupportedError("Value $v not supported, "
+          "must be ${values.fold("", (p, e) => p.isEmpty ? " or `$e`" : "`$e`, $p")}.\n\tkey: $key\n\tjson: $json");
 }
 
 enum PoolCategory with ApiQueryParameter, JsonEnum {
@@ -17,6 +25,9 @@ enum PoolCategory with ApiQueryParameter, JsonEnum {
 
   @override
   dynamic toJson() => name;
+
+  /// If [key] is provided, expects [json] to be a `Map<String, dynamic>` with the supplied key.
+  /// Otherwise, expects a [String] of either `collection` or `series`.
   static PoolCategory fromJson(dynamic json, [String? key]) =>
       switch (key != null ? json[key] : json) {
         "collection" => PoolCategory.collection,
@@ -331,53 +342,55 @@ enum Rating with SearchableEnum {
 /// https://e621.net/wiki_pages/11262
 enum TagCategory with ApiQueryParameter {
   /// 0
-  general,
+  general._(generalColor),
 
   /// 1
-  artist,
+  artist._(artistColor),
 
   /// 2; WHY
-  _error,
+  _error._(_errorColor),
 
   /// 3
-  copyright,
+  copyright._(copyrightColor),
 
   /// 4
-  character,
+  character._(characterColor),
 
   /// 5
-  species,
+  species._(speciesColor),
 
   /// 6
-  invalid,
+  invalid._(invalidColor),
 
   /// 7
-  meta,
+  meta._(metaColor),
 
   /// 8
-  lore;
+  lore._(loreColor);
 
-  static const artistColor = Color(0xFFF2AC08);
-  static const copyrightColor = Color(0xFFDD00DD);
-  static const characterColor = Color(0xFF00AA00);
-  static const speciesColor = Color(0xFFED5D1F);
-  static const generalColor = Color(0xFFB4C7D9);
-  static const loreColor = Color(0xFF228822);
-  static const metaColor = Color(0xFFFFFFFF);
-  static const invalidColor = Color(0xFFFF3D3D);
-  // TODO: Remove from switch, make final member.
-  Color get color => switch (this) {
-        artist => artistColor,
-        copyright => copyrightColor,
-        character => characterColor,
-        species => speciesColor,
-        general => generalColor,
-        lore => loreColor,
-        meta => metaColor,
-        invalid => invalidColor,
-        _error => throw UnsupportedError(
-            "This value is not valid. Cannot use TagCategory._error."), //Color(0x00000000)
-      };
+  final Color color;
+  const TagCategory._(this.color);
+
+  static const colorMap = {
+        general: generalColor,
+        artist: artistColor,
+        _error: _errorColor,
+        copyright: copyrightColor,
+        character: characterColor,
+        species: speciesColor,
+        invalid: invalidColor,
+        meta: metaColor,
+        lore: loreColor,
+      },
+      generalColor = Color(0xFFB4C7D9),
+      artistColor = Color(0xFFF2AC08),
+      _errorColor = Color(0x00000000),
+      copyrightColor = Color(0xFFDD00DD),
+      characterColor = Color(0xFF00AA00),
+      speciesColor = Color(0xFFED5D1F),
+      invalidColor = Color(0xFFFF3D3D),
+      metaColor = Color(0xFFFFFFFF),
+      loreColor = Color(0xFF228822);
   bool get isTrueCategory => this != _error;
   bool get isValidCategory => this != _error && this != invalid;
   static const String categoryNameRegExpStr =

@@ -1,8 +1,813 @@
 import 'dart:convert' as dc;
+
+import 'package:e621/src/model_enums.dart';
+import 'package:e621/src/tag_parsing.dart';
+
 import 'general_enums.dart' hide ApiQueryParameter;
 import 'model.dart' as model;
 
-class Pool extends model.Pool {
+Type findUserModelType(Map<String, dynamic> json) =>
+    json["wiki_page_version_count"] != null
+        ? json["api_burst_limit"] != null
+            ? UserLoggedInDetail
+            : UserDetailed
+        : json["api_burst_limit"] != null
+            ? UserLoggedIn
+            : User;
+
+/// Gets the most specific user model based on the provided [json].
+User userFromJson(Map<String, dynamic> json) =>
+    json["wiki_page_version_count"] != null
+        ? json["api_burst_limit"] != null
+            ? UserLoggedInDetail.fromJson(json)
+            : UserDetailed.fromJson(json)
+        : json["api_burst_limit"] != null
+            ? UserLoggedIn.fromJson(json)
+            : User.fromJson(json);
+
+class Alternate with model.BaseModel {
+  /// `0`. the webm version (almost always null on original)
+  ///
+  /// `1`. the mp4 version
+  final List<String?> urls;
+  /* String? get urlWebm => urls[0];
+  String? get urlMp4 => urls[1];
+  String? get url => urls[0] ?? urls[1]; */
+  final int width;
+  final int height;
+  final String type;
+
+  const Alternate({
+    required this.height,
+    required this.type,
+    required this.urls,
+    required this.width,
+  });
+
+  /// {@macro Preview.fromJson.NullUrlFix}
+  ///
+  Alternate.fromJson(
+    Map<String, dynamic> json, {
+    bool deleted = false,
+    String? deletedUrlReplacement,
+    String? otherUrlReplacement,
+  })  : height = json["height"],
+        type = json["type"],
+        urls = List.from((json["urls"]).map((x) =>
+            (x as String?) ?? (deleted ? deletedUrlReplacement : otherUrlReplacement))),
+        width = json["width"];
+
+  @override
+  Map<String, dynamic> toJson() => {
+        "height": height,
+        "type": type,
+        "urls": urls,
+        "width": width,
+      };
+}
+
+class AlternateNonNull extends Alternate {
+  @override
+  List<String> get urls => super.urls.cast<String>();
+  const AlternateNonNull({
+    required super.height,
+    required super.type,
+    required List<String> super.urls,
+    required super.width,
+  });
+  AlternateNonNull.fromJson(
+    super.json, {
+    super.deleted = false,
+    String super.deletedUrlReplacement = "",
+    String super.otherUrlReplacement = "",
+  }) : super.fromJson();
+}
+
+class Alternates with model.BaseModel {
+  Alternate? get $480p => alternates["480p"];
+  Alternate? get $720p => alternates["720p"];
+  Alternate? get original => alternates["original"];
+  final Map<String, Alternate> alternates;
+
+  const Alternates({required this.alternates});
+
+  Alternates.fromJson(
+    Map<String, dynamic> json, {
+    bool deleted = false,
+    String? deletedUrlReplacement,
+    String? otherUrlReplacement,
+  }) : alternates = {
+          for (var e in json.entries)
+            e.key: Alternate.fromJson(
+              e.value,
+              deleted: deleted,
+              deletedUrlReplacement: deletedUrlReplacement,
+              otherUrlReplacement: otherUrlReplacement,
+            )
+        };
+
+  @override
+  Map<String, dynamic> toJson() => alternates;
+}
+
+class AlternatesNonNull with model.BaseModel implements Alternates {
+  @override
+  AlternateNonNull? get $480p => alternates["480p"];
+  @override
+  AlternateNonNull? get $720p => alternates["720p"];
+  @override
+  AlternateNonNull? get original => alternates["original"];
+  @override
+  final Map<String, AlternateNonNull> alternates;
+
+  const AlternatesNonNull({required this.alternates});
+
+  AlternatesNonNull.fromJson(
+    Map<String, dynamic> json, {
+    bool deleted = false,
+    String deletedUrlReplacement = "",
+    String otherUrlReplacement = "",
+  }) : alternates = {
+          for (var e in json.entries)
+            e.key: AlternateNonNull.fromJson(
+              e.value,
+              deleted: deleted,
+              deletedUrlReplacement: deletedUrlReplacement,
+              otherUrlReplacement: otherUrlReplacement,
+            )
+        };
+
+  @override
+  Map<String, dynamic> toJson() => alternates;
+}
+
+class Artist extends _PNameIdDatesIsActiveBase with model.BaseModel {
+  final List<String> otherNames;
+  final List<ArtistUrl> urls;
+  final List<ArtistDomain> domains;
+  final String groupName;
+  final String? notes;
+  final int? linkedUserId;
+  final int creatorId;
+  final bool isLocked;
+
+  const Artist({
+    required super.id,
+    required super.name,
+    required super.createdAt,
+    required super.updatedAt,
+    required super.isActive,
+    required this.otherNames,
+    required this.urls,
+    required this.domains,
+    required this.groupName,
+    required this.notes,
+    required this.linkedUserId,
+    required this.creatorId,
+    required this.isLocked,
+  });
+
+  Artist.fromJson(super.json)
+      : otherNames = (json["other_names"] as List).cast<String>(),
+        urls =
+            (json["urls"] as List).map((e) => ArtistUrl.fromJson(e)).toList(),
+        domains = (json["domains"] as List)
+            .map((e) => ArtistDomain.fromJson(e))
+            .toList(),
+        groupName = json["group_name"],
+        notes = json["notes"],
+        linkedUserId = json["linked_user_id"],
+        creatorId = json["creator_id"],
+        isLocked = json["is_locked"],
+        super.fromJson();
+  factory Artist.fromRawJson(String json) =>
+      Artist.fromJson(dc.jsonDecode(json));
+
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      "other_names": otherNames,
+      "urls": urls,
+      "domains": domains,
+      "group_name": groupName,
+      "notes": notes,
+      "linked_user_id": linkedUserId,
+      "creator_id": creatorId,
+      "is_locked": isLocked,
+    });
+}
+
+class ArtistDomain /*  with model.BaseModel */ {
+  final String domain;
+  final int timesUsedInPostSources;
+
+  const ArtistDomain({
+    required this.domain,
+    required this.timesUsedInPostSources,
+  });
+
+  // factory ArtistDomain.fromRawJson(String json) =>
+  //     ArtistDomain.fromJson(dc.jsonDecode(json));
+  ArtistDomain.fromJson(List json)
+      : domain = json[0],
+        timesUsedInPostSources = json[1];
+
+  // @override
+  List toJson() => [domain, timesUsedInPostSources];
+}
+
+class ArtistUrl extends _PNameIdDatesIsActiveBase with model.BaseModel {
+  final Uri url;
+  final Uri normalizedUrl;
+
+  const ArtistUrl({
+    required super.id,
+    required super.name,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.url,
+    required this.normalizedUrl,
+    required super.isActive,
+  });
+
+  ArtistUrl.fromJson(super.json)
+      : url = Uri.parse(json["url"]),
+        normalizedUrl = Uri.parse(json["normalized_url"]),
+        super.fromJson();
+  factory ArtistUrl.fromRawJson(String json) =>
+      ArtistUrl.fromJson(dc.jsonDecode(json));
+
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      "url": url.toString(),
+      "normalized_url": normalizedUrl.toString(),
+    });
+}
+
+class ArtistVersion extends _PNameIdDatesIsActiveBase with model.BaseModel {
+  final List<String> otherNames;
+  final List<String> urls;
+  // final String groupName;
+  // final int linkedUserId;
+  // final int creatorId;
+  final int artistId;
+  final int updaterId;
+  // final bool isLocked;
+  final bool notesChanged;
+
+  const ArtistVersion({
+    required super.id,
+    required super.name,
+    required super.createdAt,
+    required super.updatedAt,
+    required super.isActive,
+    required this.otherNames,
+    required this.urls,
+    // required this.groupName,
+    // required this.linkedUserId,
+    // required this.creatorId,
+    required this.artistId,
+    required this.updaterId,
+    // required this.isLocked,
+    required this.notesChanged,
+  });
+
+  ArtistVersion.fromJson(super.json)
+      : otherNames = (json["other_names"] as List).cast<String>(),
+        urls = (json["urls"] as List).cast<String>(),
+        // groupName = json["group_name"],
+        // linkedUserId = json["linked_user_id"],
+        // creatorId = json["creator_id"],
+        artistId = json["artist_id"],
+        updaterId = json["updater_id"],
+        // isLocked = json["is_locked"],
+        notesChanged = json["notes_changed"],
+        super.fromJson();
+  factory ArtistVersion.fromRawJson(String json) =>
+      ArtistVersion.fromJson(dc.jsonDecode(json));
+
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      "other_names": otherNames,
+      "urls": urls,
+      // "group_name": groupName,
+      // "linked_user_id": linkedUserId,
+      // "creator_id": creatorId,
+      "artist_id": artistId,
+      "updater_id": updaterId,
+      // "is_locked": isLocked,
+      "notes_changed": notesChanged,
+    });
+}
+
+class Comment extends _PIdDatesBase {
+  /// post_id
+  final int postId;
+
+  /// creator_id
+  final int creatorId;
+
+  /// body
+  final String body;
+
+  /// score
+  final int score;
+
+  /// updater_id
+  final int updaterId;
+
+  /// do_not_bump_post
+  final bool? /* deprecated */ doNotBumpPost;
+
+  /// is_hidden
+  final bool isHidden;
+
+  /// is_sticky
+  final bool isSticky;
+
+  /// warning_type
+  ///
+  /// MUST NOT BE [WarningType.unmark]
+  final WarningType? warningType;
+
+  /// warning_user_id
+  final int? warningUserId;
+
+  /// creator_name
+  final String creatorName;
+
+  /// updater_name
+  final String updaterName;
+
+  const Comment({
+    required super.id,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.postId,
+    required this.creatorId,
+    required this.body,
+    required this.score,
+    required this.updaterId,
+    required this.doNotBumpPost,
+    required this.isHidden,
+    required this.isSticky,
+    required this.warningType,
+    required this.warningUserId,
+    required this.creatorName,
+    required this.updaterName,
+  });
+
+  Comment.fromJson(super.json)
+      : postId = json["post_id"],
+        creatorId = json["creator_id"],
+        body = json["body"],
+        score = json["score"],
+        updaterId = json["updater_id"],
+        doNotBumpPost = json["do_not_bump_post"],
+        isHidden = json["is_hidden"],
+        isSticky = json["is_sticky"],
+        warningType = json["warning_type"] != null
+            ? WarningType(json["warning_type"])
+            : null,
+        warningUserId = json["warning_user_id"],
+        creatorName = json["creator_name"],
+        updaterName = json["updater_name"],
+        super.fromJson();
+  factory Comment.fromRawJson(String json) {
+    final r = dc.jsonDecode(json);
+    return Comment.fromJson(r is List ? r.first : r);
+  }
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      "post_id": postId,
+      "creator_id": creatorId,
+      "body": body,
+      "score": score,
+      "updater_id": updaterId,
+      "do_not_bump_post": doNotBumpPost,
+      "is_hidden": isHidden,
+      "is_sticky": isSticky,
+      "warning_type": warningType?.query,
+      "warning_user_id": warningUserId,
+      "creator_name": creatorName,
+      "updater_name": updaterName,
+    });
+
+  static Iterable<Comment> fromRawJsonResults(String json) {
+    final r = dc.jsonDecode(json);
+    return r is List
+        ? r.map((e) => Comment.fromJson(e))
+        : r["comments"] == null
+            ? [Comment.fromJson(r)]
+            : (r["comments"] as List).map((e) => Comment.fromJson(e));
+  }
+}
+
+mixin CurrentUser on UserMixin {
+  int get apiBurstLimit;
+  int get apiRegenMultiplier;
+  String get blacklistedTags;
+  bool get blacklistUsers;
+  int get commentThreshold;
+  String get customStyle;
+  DefaultImageSize get defaultImageSize;
+  bool get descriptionCollapsedInitially;
+  bool get disableCroppedThumbnails;
+  bool get disableResponsiveMode;
+  bool get disableUserDmails;
+  String get email;
+  bool get enableAutoComplete;
+  bool get enableCompactUploader;
+  bool get enableKeyboardNavigation;
+  bool get enablePrivacyMode;
+  bool get enableSafeMode;
+  int get favoriteCount;
+  int get favoriteLimit;
+  String get favoriteTags;
+  bool get hasMail;
+  bool get hideComments;
+  DateTime get lastForumReadAt;
+  DateTime get lastLoggedInAt;
+  bool get noFlagging;
+
+  int get perPage;
+  bool get receiveEmailNotifications;
+  String get recentTags;
+  int get remainingApiLimit;
+  bool get replacementsBeta;
+  bool get showHiddenComments;
+  bool get showPostStatistics;
+  int get statementTimeout;
+  bool get styleUsernames;
+  int get tagQueryLimit;
+
+  /// https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  String get timeZone;
+  DateTime get updatedAt;
+}
+
+/// TODO: Pull out fields that match w/ Post
+///
+class DTextPost with model.BaseModel {
+  /// id
+  final int id;
+
+  /// flags
+  final String flags;
+
+  /// tags
+  final String tags;
+
+  /// rating
+  final Rating rating;
+
+  /// file_ext
+  final String fileExt;
+
+  /// width
+  final int width;
+
+  /// height
+  final int height;
+
+  /// size
+  final int size;
+
+  /// created_at
+  final DateTime createdAt;
+
+  /// uploader
+  final String uploader;
+
+  /// uploader_id
+  final int uploaderId;
+
+  /// score
+  final int score;
+
+  /// fav_count
+  final int favCount;
+
+  /// is_favorited
+  final bool isFavorited;
+
+  /// pools
+  final List<int> pools;
+
+  /// md5
+  final String md5;
+
+  /// preview_url
+  final String? previewUrl;
+
+  /// large_url
+  final String? largeUrl;
+
+  /// file_url
+  final String? fileUrl;
+
+  /// preview_width
+  final int previewWidth;
+
+  /// preview_height
+  final int previewHeight;
+
+  const DTextPost({
+    required this.id,
+    required this.flags,
+    required this.tags,
+    required this.rating,
+    required this.fileExt,
+    required this.width,
+    required this.height,
+    required this.size,
+    required this.createdAt,
+    required this.uploader,
+    required this.uploaderId,
+    required this.score,
+    required this.favCount,
+    required this.isFavorited,
+    required this.pools,
+    required this.md5,
+    required this.previewUrl,
+    required this.largeUrl,
+    required this.fileUrl,
+    required this.previewWidth,
+    required this.previewHeight,
+  });
+
+  DTextPost.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        flags = json["flags"],
+        tags = json["tags"],
+        rating = Rating.fromTagText(json["rating"]),
+        fileExt = json["file_ext"],
+        width = json["width"],
+        height = json["height"],
+        size = json["size"],
+        createdAt = DateTime.parse(json["created_at"]),
+        uploader = json["uploader"],
+        uploaderId = json["uploader_id"],
+        score = json["score"],
+        favCount = json["fav_count"],
+        isFavorited = json["is_favorited"],
+        pools = (json["pools"] as List).cast<int>(),
+        md5 = json["md5"],
+        previewUrl = json["preview_url"],
+        largeUrl = json["large_url"],
+        fileUrl = json["file_url"],
+        previewWidth = json["preview_width"],
+        previewHeight = json["preview_height"];
+  @override
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "flags": flags,
+        "tags": tags,
+        "rating": rating.suffixShort,
+        "file_ext": fileExt,
+        "width": width,
+        "height": height,
+        "size": size,
+        "created_at": createdAt,
+        "uploader": uploader,
+        "uploader_id": uploaderId,
+        "score": score,
+        "fav_count": favCount,
+        "is_favorited": isFavorited,
+        "pools": pools,
+        "md5": md5,
+        "preview_url": previewUrl,
+        "large_url": largeUrl,
+        "file_url": fileUrl,
+        "preview_width": previewWidth,
+        "preview_height": previewHeight,
+      };
+}
+
+class DTextResponse with model.BaseModel {
+  final String html;
+  final Map<int, DTextPost> posts;
+
+  const DTextResponse({required this.html, required this.posts});
+
+  DTextResponse.fromJson(Map<String, dynamic> json)
+      : html = json["html"],
+        posts = (json["posts"] as Map)
+            .map((k, v) => MapEntry(k, DTextPost.fromJson(v)));
+  @override
+  Map<String, dynamic> toJson() => {"html": html, "posts": posts};
+}
+
+class File extends Preview {
+  /// The file’s extension.
+  final String ext;
+
+  /// The size of the file in bytes.
+  final int size;
+
+  /// The md5 of the file.
+  final String md5;
+
+  const File({
+    required super.width,
+    required super.height,
+    required this.ext,
+    required this.size,
+    required this.md5,
+    required super.url,
+  });
+
+  /// {@macro Preview.fromJson.NullUrlFix}
+  File.fromJson(
+    super.json, {
+    super.deleted = false,
+    super.deletedUrlReplacement,
+    super.otherUrlReplacement,
+  })  : ext = json["ext"] as String,
+        size = json["size"] as int,
+        md5 = json["md5"] as String,
+        super.fromJson();
+  @override
+  File copyWith({
+    String? ext,
+    int? size,
+    String? md5,
+    String? url = "",
+    int? width,
+    int? height,
+  }) =>
+      File(
+        ext: ext ?? this.ext,
+        size: size ?? this.size,
+        md5: md5 ?? this.md5,
+        height: height ?? this.height,
+        url: (url ?? "s").isNotEmpty ? url : this.url,
+        width: width ?? this.width,
+      );
+}
+class FileNonNull extends File {
+  @override
+  String get url => super.url!;
+
+  const FileNonNull({
+    required super.width,
+    required super.height,
+    required super.ext,
+    required super.size,
+    required super.md5,
+    required String super.url,
+  });
+
+  /// {@macro Preview.fromJson.NullUrlFix}
+  FileNonNull.fromJson(
+    super.json, {
+    super.deleted = false,
+    String super.deletedUrlReplacement = "",
+    String super.otherUrlReplacement = "",
+  })  : super.fromJson();
+  @override
+  FileNonNull copyWith({
+    String? ext,
+    int? size,
+    String? md5,
+    String? url,
+    int? width,
+    int? height,
+  }) =>
+      FileNonNull(
+        ext: ext ?? this.ext,
+        size: size ?? this.size,
+        md5: md5 ?? this.md5,
+        height: height ?? this.height,
+        url: url ?? this.url,
+        width: width ?? this.width,
+      );
+}
+
+class ModifiablePostSets with model.BaseModel {
+  final List<({String name, int id})> owned;
+  final List<({String name, int id})> maintained;
+  const ModifiablePostSets({required this.owned, required this.maintained});
+
+  ModifiablePostSets.fromJson(Map<String, dynamic> json)
+      : maintained = (json["Maintained"] as List)
+            .map<({String name, int id})>(
+                (e) => (name: (e as List).first, id: e.last))
+            .toList(),
+        owned = (json["Owned"] as List)
+            .map<({String name, int id})>(
+                (e) => (name: (e as List).first, id: e.last))
+            .toList();
+
+  factory ModifiablePostSets.fromRawJson(String json) =>
+      ModifiablePostSets.fromJson(dc.jsonDecode(json));
+  List<({String name, int id})> get all => owned + maintained;
+  @override
+  Map<String, dynamic> toJson() => {
+        "maintained": maintained.map(elementToJson),
+        "owned": owned.map(elementToJson),
+      };
+  static List elementToJson(({String name, int id}) e) => [e.name, e.id];
+}
+
+class Note extends _PIdDatesBase {
+  final int creatorId;
+  final int x;
+  final int y;
+  final int width;
+  final int height;
+  final int version;
+  final bool isActive;
+  final int postId;
+  final String body;
+  final String creatorName;
+
+  const Note({
+    required super.id,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.creatorId,
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+    required this.version,
+    required this.isActive,
+    required this.postId,
+    required this.body,
+    required this.creatorName,
+  });
+
+  Note.fromJson(super.json)
+      : creatorId = json["creator_id"],
+        x = json["x"],
+        y = json["y"],
+        width = json["width"],
+        height = json["height"],
+        version = json["version"],
+        isActive = json["is_active"],
+        postId = json["post_id"],
+        body = json["body"],
+        creatorName = json["creator_name"],
+        super.fromJson();
+
+  Note.fromRawJson(String str) : this.fromJson(dc.json.decode(str));
+
+  Note copyWith({
+    int? id,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? creatorId,
+    int? x,
+    int? y,
+    int? width,
+    int? height,
+    int? version,
+    bool? isActive,
+    int? postId,
+    String? body,
+    String? creatorName,
+  }) =>
+      Note(
+        id: id ?? this.id,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        creatorId: creatorId ?? this.creatorId,
+        x: x ?? this.x,
+        y: y ?? this.y,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        version: version ?? this.version,
+        isActive: isActive ?? this.isActive,
+        postId: postId ?? this.postId,
+        body: body ?? this.body,
+        creatorName: creatorName ?? this.creatorName,
+      );
+
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      "creator_id": creatorId,
+      "x": x,
+      "y": y,
+      "width": width,
+      "height": height,
+      "version": version,
+      "is_active": isActive,
+      "post_id": postId,
+      "body": body,
+      "creator_name": creatorName,
+    });
+
+  /// Safely handles the special value when a search yields no results.
+  static Note? fromJsonSafe(Map<String, dynamic> json) =>
+      json["notes"]?.runtimeType == List ? null : Note.fromJson(json);
+}
+
+class Pool extends model.Pool with model.PostCollection<Pool> {
   /// The ID of the pool.
   @override
   final int id;
@@ -47,9 +852,6 @@ class Pool extends model.Pool {
   @override
   final int postCount;
 
-  String get searchById => 'pool:$id';
-  String get searchByName => 'pool:$name';
-
   const Pool({
     required this.id,
     required this.name,
@@ -63,6 +865,36 @@ class Pool extends model.Pool {
     required this.creatorName,
     required this.postCount,
   });
+
+  Pool.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        name = json["name"],
+        createdAt = DateTime.parse(json["created_at"]),
+        updatedAt = DateTime.parse(json["updated_at"]),
+        creatorId = json["creator_id"],
+        description = json["description"],
+        isActive = json["is_active"],
+        category = PoolCategory.fromJson(json["category"]),
+        postIds = (json["post_ids"] as List).cast<int>(),
+        creatorName = json["creator_name"],
+        postCount = json["post_count"];
+
+  factory Pool.fromRawJson(String str) {
+    final f = dc.json.decode(str);
+    return Pool.fromJson(f is List ? f.first : f);
+  }
+  String get searchById => 'pool:$id';
+
+  /// Some names contain characters that are not valid in a search. These can't
+  /// be searched through their names.
+  ///
+  /// See [disallowedInTagName] & [disallowedAsFirstCharacterInTagName].
+  String? get searchByName => name.contains(disallowedInTagName) ||
+          name.startsWith(disallowedAsFirstCharacterInTagName)
+      ? null
+      : 'pool:$name';
+
+  @override
   Pool copyWith({
     int? id,
     String? name,
@@ -90,105 +922,494 @@ class Pool extends model.Pool {
         postCount: postCount ?? this.postCount,
       );
 
-  factory Pool.fromRawJson(String str) => Pool.fromJson(dc.json.decode(str));
-
-  factory Pool.fromJson(Map<String, dynamic> json) => Pool(
-        id: json["id"],
-        name: json["name"],
-        createdAt: DateTime.parse(json["created_at"]),
-        updatedAt: DateTime.parse(json["updated_at"]),
-        creatorId: json["creator_id"],
-        description: json["description"],
-        isActive: json["is_active"],
-        category: PoolCategory.fromJson(json["category"]),
-        postIds: (json["post_ids"] as List).cast<int>(),
-        creatorName: json["creator_name"],
-        postCount: json["post_count"],
-      );
+  static Iterable<Pool> fromRawJsonResults(String str) {
+    final f = dc.json.decode(str);
+    return f is List ? f.map((e) => Pool.fromJson(e)) : [Pool.fromJson(f)];
+  }
 }
 
-class Note with model.BaseModel {
-  final int id;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int creatorId;
-  final int x;
-  final int y;
-  final int width;
-  final int height;
-  final int version;
-  final bool isActive;
-  final int postId;
-  final String body;
-  final String creatorName;
+class Post extends _PIdDatesBase {
+  // #region Json Fields
+  /// (array group)
+  final File file;
 
-  const Note({
+  /// (array group)
+  final Preview preview;
+
+  /// (array group)
+  final Sample sample;
+
+  /// (array group)
+  final Score score;
+
+  /// (array group)
+  final PostTags tags;
+
+  /// A JSON array of tags that are locked on the post.
+  final List<String> lockedTags;
+
+  /// An ID that increases for every post alteration on E6 (explained below)
+  final int changeSeq;
+
+  /// (array group)
+  final PostFlags flags;
+
+  /// The post’s rating. Either s, q or e.
+  final String rating;
+
+  /// How many people have favorited the post.
+  final int favCount;
+
+  /// The source field of the post.
+  final List<String> sources;
+
+  /// An array of Pool IDs that the post is a part of.
+  final List<int> pools;
+
+  /// (array group)
+  final PostRelationships relationships;
+
+  /// The ID of the user that approved the post, if available.
+  final int? approverId;
+
+  /// The ID of the user that uploaded the post.
+  final int uploaderId;
+
+  /// The post’s description.
+  final String description;
+
+  /// The count of comments on the post.
+  final int commentCount;
+
+  /// If provided auth credentials, will return if the authenticated user has
+  /// favorited the post or not. If not provided, will be false.
+  final bool isFavorited;
+
+  // #region Not Documented
+  /// Guess
+  final bool hasNotes;
+
+  /// If post is a video, the video length. Otherwise, null.
+  final num? duration;
+  // #endregion Not Documented
+  // #endregion Json Fields
+
+  const Post({
+    required super.id,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.file,
+    required this.preview,
+    required this.sample,
+    required this.score,
+    required this.tags,
+    required this.lockedTags,
+    required this.changeSeq,
+    required this.flags,
+    required this.rating,
+    required this.favCount,
+    required this.sources,
+    required this.pools,
+    required this.relationships,
+    required this.approverId,
+    required this.uploaderId,
+    required this.description,
+    required this.commentCount,
+    required this.isFavorited,
+    required this.hasNotes,
+    required this.duration,
+  });
+
+  /// {@macro Preview.fromJson.NullUrlFix}
+  Post.fromJson(
+    super.json, {
+    String? deletedUrlReplacement,
+    String? otherUrlReplacement,
+  })  : file = File.fromJson(
+          json["file"],
+          deleted: (json["flags"]["deleted"] as bool),
+          deletedUrlReplacement: deletedUrlReplacement,
+          otherUrlReplacement: otherUrlReplacement,
+        ),
+        preview = Preview.fromJson(
+          json["preview"],
+          deleted: (json["flags"]["deleted"] as bool),
+          deletedUrlReplacement: deletedUrlReplacement,
+          otherUrlReplacement: otherUrlReplacement,
+        ),
+        sample = Sample.fromJson(
+          json["sample"],
+          deleted: (json["flags"]["deleted"] as bool),
+          deletedUrlReplacement: deletedUrlReplacement,
+          otherUrlReplacement: otherUrlReplacement,
+        ),
+        score = Score.fromJson(json["score"]),
+        tags = PostTags.fromJson(json["tags"]),
+        lockedTags = (json["locked_tags"] as List).cast<String>(),
+        changeSeq = json["change_seq"] as int,
+        flags = PostBitFlags.fromJson(json["flags"]),
+        rating = json["rating"] as String,
+        favCount = json["fav_count"] as int,
+        sources = (json["sources"] as List).cast<String>(),
+        pools = (json["pools"] as List).cast<int>(),
+        relationships = PostRelationships.fromJson(json["relationships"]),
+        approverId = json["approver_id"] as int?,
+        uploaderId = json["uploader_id"] as int,
+        description = json["description"] as String,
+        commentCount = json["comment_count"] as int,
+        isFavorited = json["is_favorited"] as bool,
+        hasNotes = json["has_notes"] as bool,
+        duration = json["duration"] as num?,
+        super.fromJson();
+  factory Post.fromRawJson(String json) {
+    var t = dc.jsonDecode(json);
+    try {
+      return Post.fromJson(t);
+    } catch (_) {
+      try {
+        return Post.fromJson(t["post"]);
+      } catch (_) {
+        return Post.fromJson(t["posts"]);
+      }
+    }
+  }
+
+  Post copyWith({
+    int? id,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    File? file,
+    Preview? preview,
+    Sample? sample,
+    Score? score,
+    PostTags? tags,
+    List<String>? lockedTags,
+    int? changeSeq,
+    PostFlags? flags,
+    String? rating,
+    int? favCount,
+    List<String>? sources,
+    List<int>? pools,
+    PostRelationships? relationships,
+    int? approverId = -1,
+    int? uploaderId,
+    String? description,
+    int? commentCount,
+    bool? isFavorited,
+    bool? hasNotes,
+    num? duration = -1,
+  }) =>
+      Post(
+        id: id ?? this.id,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        file: file ?? this.file,
+        preview: preview ?? this.preview,
+        sample: sample ?? this.sample,
+        score: score ?? this.score,
+        tags: tags ?? this.tags,
+        lockedTags: lockedTags ?? this.lockedTags,
+        changeSeq: changeSeq ?? this.changeSeq,
+        flags: flags ?? this.flags,
+        rating: rating ?? this.rating,
+        favCount: favCount ?? this.favCount,
+        sources: sources ?? this.sources,
+        pools: pools ?? this.pools,
+        relationships: relationships ?? this.relationships,
+        approverId: (approverId ?? 1) < 0 ? approverId : this.approverId,
+        uploaderId: uploaderId ?? this.uploaderId,
+        description: description ?? this.description,
+        commentCount: commentCount ?? this.commentCount,
+        isFavorited: isFavorited ?? this.isFavorited,
+        hasNotes: hasNotes ?? this.hasNotes,
+        duration: (duration ?? 1) < 0 ? duration : this.duration,
+      );
+  static Iterable<Post> fromRawJsonResults(String json) {
+    var t = dc.jsonDecode(json);
+    return t["posts"] != null
+        ? (t["posts"] as Iterable).map((e) => Post.fromJson(e))
+        : t is Iterable
+            ? t.map((e) => Post.fromJson(e))
+            : t["post"] != null
+                ? [Post.fromJson(t["post"])]
+                : [Post.fromJson(t)];
+  }
+}
+
+class PostBitFlags with model.BaseModel implements PostFlags {
+  static const int pendingFlag = 1; //int.parse("000001", radix: 2);
+
+  static const int flaggedFlag = 2; //int.parse("000010", radix: 2);
+
+  static const int noteLockedFlag = 4; //int.parse("000100", radix: 2);
+
+  static const int statusLockedFlag = 8; //int.parse("001000", radix: 2);
+
+  static const int ratingLockedFlag = 16; //int.parse("010000", radix: 2);
+
+  static const int deletedFlag = 32; //int.parse("100000", radix: 2);
+  final int _data;
+  PostBitFlags({
+    required bool pending,
+    required bool flagged,
+    required bool noteLocked,
+    required bool statusLocked,
+    required bool ratingLocked,
+    required bool deleted,
+  }) : _data = (pending ? pendingFlag : 0) +
+            (flagged ? flaggedFlag : 0) +
+            (noteLocked ? noteLockedFlag : 0) +
+            (statusLocked ? statusLockedFlag : 0) +
+            (ratingLocked ? ratingLockedFlag : 0) +
+            (deleted ? deletedFlag : 0);
+  PostBitFlags.fromJson(Map<String, dynamic> json)
+      : this(
+          pending: json["pending"] as bool,
+          flagged: json["flagged"] as bool,
+          noteLocked: json["note_locked"] as bool,
+          statusLocked: json["status_locked"] as bool,
+          ratingLocked: json["rating_locked"] as bool,
+          deleted: json["deleted"] as bool,
+        );
+  @override
+  bool get deleted => (_data & deletedFlag) == deletedFlag;
+
+  @override
+  bool get flagged => (_data & flaggedFlag) == flaggedFlag;
+  @override
+  bool get noteLocked => (_data & noteLockedFlag) == noteLockedFlag;
+  @override
+  bool get pending => (_data & pendingFlag) == pendingFlag;
+  @override
+  bool get ratingLocked => (_data & ratingLockedFlag) == ratingLockedFlag;
+  @override
+  bool get statusLocked => (_data & statusLockedFlag) == statusLockedFlag;
+  static int getValue({
+    bool pending = false,
+    bool flagged = false,
+    bool noteLocked = false,
+    bool statusLocked = false,
+    bool ratingLocked = false,
+    bool deleted = false,
+  }) =>
+      (pending ? pendingFlag : 0) +
+      (flagged ? flaggedFlag : 0) +
+      (noteLocked ? noteLockedFlag : 0) +
+      (statusLocked ? statusLockedFlag : 0) +
+      (ratingLocked ? ratingLockedFlag : 0) +
+      (deleted ? deletedFlag : 0);
+
+  @override
+  Map<String, dynamic> toJson() => {
+        "pending": pending,
+        "flagged": flagged,
+        "note_locked": noteLocked,
+        "status_locked": statusLocked,
+        "rating_locked": ratingLocked,
+        "deleted": deleted,
+      };
+}
+
+class PostEvent with model.BaseModel {
+  final int id;
+  final int creatorId;
+  final int postId;
+  final PostEventAction action;
+  final DateTime createdAt;
+
+  const PostEvent({
+    required this.id,
+    required this.creatorId,
+    required this.postId,
+    required this.action,
+    required this.createdAt,
+  });
+  PostEvent.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        creatorId = json["creator_id"],
+        postId = json["post_id"],
+        action = PostEventAction.fromJson(json["action"]),
+        createdAt = DateTime.parse(json["created_at"]);
+
+  factory PostEvent.fromRawJson(String json) =>
+      PostEvent.fromJson(dc.jsonDecode(json));
+
+  @override
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "creator_id": creatorId,
+        "post_id": postId,
+        "action": action.toJson(),
+        "created_at": createdAt.toIso8601String(),
+      };
+}
+
+class PostFlags with model.BaseModel {
+  /// If the post is pending approval. (True/False)
+  final bool pending;
+
+  /// If the post is flagged for deletion. (True/False)
+  final bool flagged;
+
+  /// If the post has it’s notes locked. (True/False)
+  final bool noteLocked;
+
+  /// If the post’s status has been locked. (True/False)
+  final bool statusLocked;
+
+  /// If the post’s rating has been locked. (True/False)
+  final bool ratingLocked;
+
+  /// If the post has been deleted. (True/False)
+  final bool deleted;
+
+  const PostFlags({
+    required this.pending,
+    required this.flagged,
+    required this.noteLocked,
+    required this.statusLocked,
+    required this.ratingLocked,
+    required this.deleted,
+  });
+  PostFlags.fromJson(Map<String, dynamic> json)
+      : pending = json["pending"] as bool,
+        flagged = json["flagged"] as bool,
+        noteLocked = json["note_locked"] as bool,
+        statusLocked = json["status_locked"] as bool,
+        ratingLocked = json["rating_locked"] as bool,
+        deleted = json["deleted"] as bool;
+  @override
+  Map<String, dynamic> toJson() => {
+        "pending": pending,
+        "flagged": flagged,
+        "note_locked": noteLocked,
+        "status_locked": statusLocked,
+        "rating_locked": ratingLocked,
+        "deleted": deleted,
+      };
+}
+
+class PostRelationships with model.BaseModel {
+  /// The ID of the post’s parent, if it has one.
+  final int? parentId;
+
+  /// If the post has child posts (True/False)
+  final bool hasChildren;
+
+  /// If the post has active child posts (True/False)
+  ///
+  /// J's Note: I assume "active" means not deleted
+  final bool hasActiveChildren;
+
+  /// A list of child post IDs that are linked to the post, if it has any.
+  final List<int> children;
+
+  const PostRelationships({
+    required this.parentId,
+    required this.hasChildren,
+    required this.hasActiveChildren,
+    required this.children,
+  });
+
+  PostRelationships.fromJson(Map<String, dynamic> json)
+      : this(
+          parentId: json["parent_id"] as int?,
+          hasChildren: json["has_children"] as bool,
+          hasActiveChildren: json["has_active_children"] as bool,
+          children: (json["children"] as List).cast<int>(),
+        );
+  bool get hasParent => parentId != null;
+  @override
+  Map<String, dynamic> toJson() => {
+        "parent_id": parentId,
+        "has_children": hasChildren,
+        "has_active_children": hasActiveChildren,
+        "children": children,
+      };
+}
+
+/// https://e621.net/post_sets.json?35356
+///
+class PostSet with model.BaseModel, model.PostCollection<PostSet> {
+  @override
+  final int id;
+  @override
+  final DateTime createdAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  final int creatorId;
+  final bool isPublic;
+  @override
+  final String name;
+  final String shortname;
+  final String description;
+  @override
+  final int postCount;
+  final bool transferOnDelete;
+  @override
+  final List<int> postIds;
+
+  const PostSet({
     required this.id,
     required this.createdAt,
     required this.updatedAt,
     required this.creatorId,
-    required this.x,
-    required this.y,
-    required this.width,
-    required this.height,
-    required this.version,
-    required this.isActive,
-    required this.postId,
-    required this.body,
-    required this.creatorName,
+    required this.isPublic,
+    required this.name,
+    required this.shortname,
+    required this.description,
+    required this.postCount,
+    required this.transferOnDelete,
+    required this.postIds,
   });
+  PostSet.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        createdAt = DateTime.parse(json["created_at"]),
+        updatedAt = DateTime.parse(json["updated_at"]),
+        creatorId = json["creator_id"],
+        isPublic = json["is_public"],
+        name = json["name"],
+        shortname = json["shortname"],
+        description = json["description"],
+        postCount = json["post_count"],
+        transferOnDelete = json["transfer_on_delete"],
+        postIds = (json["post_ids"] as List).cast();
 
-  Note copyWith({
-    int? id,
+  factory PostSet.fromRawJson(String str) {
+    final t = dc.json.decode(str);
+    return PostSet.fromJson(t is List ? t.first : t);
+  }
+
+  String get searchById => 'set:$id';
+
+  String get searchByShortname => 'set:$shortname';
+  @override
+  PostSet copyWith({
     DateTime? createdAt,
-    DateTime? updatedAt,
     int? creatorId,
-    int? x,
-    int? y,
-    int? width,
-    int? height,
-    int? version,
-    bool? isActive,
-    int? postId,
-    String? body,
-    String? creatorName,
+    String? description,
+    int? id,
+    bool? isPublic,
+    String? name,
+    int? postCount,
+    List<int>? postIds,
+    String? shortname,
+    bool? transferOnDelete,
+    DateTime? updatedAt,
   }) =>
-      Note(
-        id: id ?? this.id,
+      PostSet(
         createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
         creatorId: creatorId ?? this.creatorId,
-        x: x ?? this.x,
-        y: y ?? this.y,
-        width: width ?? this.width,
-        height: height ?? this.height,
-        version: version ?? this.version,
-        isActive: isActive ?? this.isActive,
-        postId: postId ?? this.postId,
-        body: body ?? this.body,
-        creatorName: creatorName ?? this.creatorName,
-      );
-
-  factory Note.fromRawJson(String str) => Note.fromJson(dc.json.decode(str));
-
-  /// Safely handles the special value when a search yields no results.
-  static Note? fromJsonSafe(Map<String, dynamic> json) =>
-      json["notes"]?.runtimeType == List ? null : Note.fromJson(json);
-
-  factory Note.fromJson(Map<String, dynamic> json) => Note(
-        id: json["id"],
-        createdAt: DateTime.parse(json["created_at"]),
-        updatedAt: DateTime.parse(json["updated_at"]),
-        creatorId: json["creator_id"],
-        x: json["x"],
-        y: json["y"],
-        width: json["width"],
-        height: json["height"],
-        version: json["version"],
-        isActive: json["is_active"],
-        postId: json["post_id"],
-        body: json["body"],
-        creatorName: json["creator_name"],
+        description: description ?? this.description,
+        id: id ?? this.id,
+        isPublic: isPublic ?? this.isPublic,
+        name: name ?? this.name,
+        postCount: postCount ?? this.postCount,
+        postIds: postIds ?? this.postIds,
+        shortname: shortname ?? this.shortname,
+        transferOnDelete: transferOnDelete ?? this.transferOnDelete,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 
   @override
@@ -197,16 +1418,581 @@ class Note with model.BaseModel {
         "created_at": createdAt.toIso8601String(),
         "updated_at": updatedAt.toIso8601String(),
         "creator_id": creatorId,
-        "x": x,
-        "y": y,
+        "is_public": isPublic,
+        "name": name,
+        "shortname": shortname,
+        "description": description,
+        "post_count": postCount,
+        "transfer_on_delete": transferOnDelete,
+        "post_ids": postIds,
+      };
+
+  static Iterable<PostSet> fromJsonResults(dynamic json) => json is List
+      ? json.map((e) => PostSet.fromJson(e))
+      : json["post_sets"] != null
+          ? json["post_sets"]!.map((e) => PostSet.fromJson(e))
+          : json["id"] != null
+              ? [PostSet.fromJson(json)]
+              : [];
+  static Iterable<PostSet> fromRawJsonResults(String str) =>
+      fromJsonResults(dc.json.decode(str));
+}
+
+class PostTags with model.BaseModel {
+  /// A JSON array of all the general tags on the post.
+  final List<String> general;
+
+  /// A JSON array of all the species tags on the post.
+  final List<String> species;
+
+  /// A JSON array of all the character tags on the post.
+  final List<String> character;
+
+  /// A JSON array of all the artist tags on the post.
+  final List<String> artist;
+
+  /// A JSON array of all the invalid tags on the post.
+  final List<String> invalid;
+
+  /// A JSON array of all the lore tags on the post.
+  final List<String> lore;
+
+  /// A JSON array of all the meta tags on the post.
+  final List<String> meta;
+
+  /// A JSON array of all the copyright tags on the post. ?undocumented?
+  final List<String> copyright;
+  const PostTags({
+    required this.general,
+    required this.species,
+    required this.character,
+    required this.artist,
+    required this.invalid,
+    required this.lore,
+    required this.meta,
+    required this.copyright,
+  });
+  PostTags.fromJson(Map<String, dynamic> json)
+      : this(
+          general: (json["general"] as List).cast<String>(),
+          species: (json["species"] as List).cast<String>(),
+          character: (json["character"] as List).cast<String>(),
+          artist: (json["artist"] as List).cast<String>(),
+          invalid: (json["invalid"] as List).cast<String>(),
+          lore: (json["lore"] as List).cast<String>(),
+          meta: (json["meta"] as List).cast<String>(),
+          copyright: (json["copyright"] as List).cast<String>(),
+        );
+
+  List<String> getByCategory(TagCategory c) =>
+      getByCategorySafe(c) ??
+      (throw ArgumentError.value(c, "c", "Can't be TagCategory._error"));
+  List<String>? getByCategorySafe(TagCategory c) => switch (c) {
+        TagCategory.general => general,
+        TagCategory.species => species,
+        TagCategory.character => character,
+        TagCategory.artist => artist,
+        TagCategory.invalid => invalid,
+        TagCategory.lore => lore,
+        TagCategory.meta => meta,
+        TagCategory.copyright => copyright,
+        _ => null,
+      };
+
+  @override
+  Map<String, dynamic> toJson() => {
+        "general": general,
+        "species": species,
+        "character": character,
+        "artist": artist,
+        "invalid": invalid,
+        "lore": lore,
+        "meta": meta,
+        "copyright": copyright,
+      };
+}
+
+class Preview with model.BaseModel {
+  /// The width of the file.
+  final int width;
+
+  /// The height of the file.
+  final int height;
+
+  /// {@template Preview.url}
+  ///
+  /// The URL where the preview file is hosted on E6
+  ///
+  /// If the post is a video, this is a preview image from the video
+  ///
+  /// If auth is not provided, [this may be null][1].
+  ///
+  /// [1]: https://e621.net/help/global_blacklist
+  ///
+  /// {@endtemplate}
+  final String? url;
+
+  const Preview({
+    required this.width,
+    required this.height,
+    required this.url,
+  });
+
+  /// Allows null url if both [deletedUrlReplacement] and [otherUrlReplacement] are null.
+  static Map<String, dynamic> replaceNullUrls(
+    Map<String, dynamic> json,
+    String? deletedUrlReplacement,
+    String? otherUrlReplacement, {
+    final String urlKey = "url",
+  }) {
+    if (deletedUrlReplacement == null && otherUrlReplacement == null) {
+      return json;
+    }
+    return json
+      ..[urlKey] ??= (json["flags"]["deleted"] as bool)
+          ? deletedUrlReplacement
+          : otherUrlReplacement;
+  }
+
+  /// {@template Preview.fromJson.NullUrlFix}
+  /// Allows null url if both [deletedUrlReplacement] and [otherUrlReplacement] are null.
+  ///
+  /// If [deleted] is true and `json["url"]` is null, the value of [url] will be [deletedUrlReplacement].
+  /// If [deleted] is false and `json["url"]` is null, the value of [url] will be [otherUrlReplacement].
+  /// {@endtemplate}
+  Preview.fromJson(
+    Map<String, dynamic> json, {
+    bool deleted = false,
+    String? deletedUrlReplacement,
+    String? otherUrlReplacement,
+  })  : width = json["width"],
+        height = json["height"],
+        url = json["url"] ??
+            (deleted ? deletedUrlReplacement : otherUrlReplacement);
+  Preview copyWith({
+    String? url = "",
+    int? width,
+    int? height,
+  }) =>
+      Preview(
+        height: height ?? this.height,
+        url: (url ?? "s").isNotEmpty ? url : this.url,
+        width: width ?? this.width,
+      );
+  @override
+  Map<String, dynamic> toJson() => {
         "width": width,
         "height": height,
-        "version": version,
-        "is_active": isActive,
-        "post_id": postId,
-        "body": body,
-        "creator_name": creatorName,
+        "url": url,
       };
+}
+class PreviewNonNull extends Preview {
+  @override
+  String get url => super.url!;
+
+  const PreviewNonNull({
+    required super.width,
+    required super.height,
+    required String super.url,
+  });
+
+  /// {@template Preview.fromJson.NullUrlFix}
+  /// Allows null url if both [deletedUrlReplacement] and [otherUrlReplacement] are null.
+  ///
+  /// If [deleted] is true and `json["url"]` is null, the value of [url] will be [deletedUrlReplacement].
+  /// If [deleted] is false and `json["url"]` is null, the value of [url] will be [otherUrlReplacement].
+  /// {@endtemplate}
+  PreviewNonNull.fromJson(
+    super.json, {
+    super.deleted = false,
+    String super.deletedUrlReplacement = "",
+    String super.otherUrlReplacement = "",
+  })  : super.fromJson();
+  @override
+  PreviewNonNull copyWith({
+    String? url,
+    int? width,
+    int? height,
+  }) =>
+      PreviewNonNull(
+        height: height ?? this.height,
+        url: url ?? this.url,
+        width: width ?? this.width,
+      );
+}
+
+class RelatedTag with model.BaseModel {
+  final String name;
+  final TagCategory category;
+  const RelatedTag({
+    required this.name,
+    required this.category,
+  });
+
+  RelatedTag.fromJson(Map<String, dynamic> json)
+      : name = json["name"],
+        category = TagCategory.fromJson(json["category_id"]);
+
+  factory RelatedTag.fromRawJson(String json) =>
+      RelatedTag.fromJson(dc.jsonDecode(json));
+  int get categoryId => category.index;
+
+  @override
+  Map<String, dynamic> toJson() =>
+      {"name": name, "category_id": category.toJson()};
+}
+
+class Sample extends Preview {
+  /// If the post has a sample/thumbnail or not. (True/False)
+  final bool has;
+  final Alternates? alternates;
+
+  const Sample({
+    required this.has,
+    required super.width,
+    required super.height,
+    required super.url,
+    required this.alternates,
+  });
+
+  /// {@macro Preview.fromJson.NullUrlFix}
+  Sample.fromJson(
+    super.json, {
+    super.deleted = false,
+    super.deletedUrlReplacement,
+    super.otherUrlReplacement,
+  })  : has = json["has"],
+        alternates = json["alternates"] != null
+            ? Alternates.fromJson(json["alternates"],
+                deleted: deleted,
+                deletedUrlReplacement: deletedUrlReplacement,
+                otherUrlReplacement: otherUrlReplacement)
+            : null,
+        super.fromJson();
+}
+class SampleNonNull extends Sample {
+  @override
+  AlternatesNonNull? get alternates => super.alternates as AlternatesNonNull?;
+
+  const SampleNonNull({
+    required super.has,
+    required super.width,
+    required super.height,
+    required super.url,
+    required AlternatesNonNull? super.alternates,
+  });
+
+  /// {@macro Preview.fromJson.NullUrlFix}
+  SampleNonNull.fromJson(
+    super.json, {
+    super.deleted = false,
+    String super.deletedUrlReplacement = "",
+    String super.otherUrlReplacement = "",
+  })  : super.fromJson();
+}
+
+class Score {
+  /// The number of times voted up.
+  final int up;
+
+  /// A negative number representing the number of times voted down.
+  final int down;
+
+  /// The total score (up + down).
+  final int total;
+
+  const Score({
+    required this.up,
+    required this.down,
+    required this.total,
+  });
+  Score.fromJson(Map<String, dynamic> json)
+      : this(
+          up: json["up"] as int,
+          down: json["down"] as int,
+          total: json["total"] as int,
+        );
+  Score.fromJsonRaw(String json) : this.fromJson(dc.jsonDecode(json));
+
+  Score copyWith({
+    int? up,
+    int? down,
+    int? total,
+  }) =>
+      Score(
+        up: up ?? this.up,
+        down: down ?? this.down,
+        total: total ?? this.total,
+      );
+
+  Map<String, dynamic> toJson() => {
+        "up": up,
+        "down": down,
+        "total": total,
+      };
+}
+
+/// https://e621.wiki/#operations-Tags-searchTags
+/// 
+class Tag extends TagDbEntry {
+  /// <space-delimited list of tags>,???
+  final List<String> relatedTags;
+
+  /// <ISO8601 timestamp>,
+  final DateTime? relatedTagsUpdatedAt;
+
+  // /// <numeric category id>,
+  // final TagCategory category;
+
+  /// <boolean>,
+  final bool isLocked;
+
+  /// <ISO8601 timestamp>,
+  final DateTime createdAt;
+
+  /// <ISO8601 timestamp>
+  final DateTime updatedAt;
+
+  const Tag({
+    required super.id,
+    required super.name,
+    required super.postCount,
+    required this.relatedTags,
+    required this.relatedTagsUpdatedAt,
+    required super.category,
+    required this.isLocked,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  Tag.fromJson(super.json)
+      : relatedTags = (json["related_tags"] as List).cast<String>(),
+        relatedTagsUpdatedAt = json["related_tags_updated_at"] as DateTime?,
+        isLocked = json["is_locked"] as bool,
+        createdAt = json["created_at"] as DateTime,
+        updatedAt = json["updated_at"] as DateTime,
+        super.fromJson();
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      // "id": id,
+      // "name": name,
+      // "post_count": postCount,
+      "related_tags": relatedTags,
+      "related_tags_updated_at": relatedTagsUpdatedAt,
+      // "category": category.index,
+      "is_locked": isLocked,
+      "created_at": createdAt,
+      "updated_at": updatedAt,
+    });
+}
+
+class TagDbEntry extends TagDbEntrySlim {
+  static const csvHeader = "id,name,category,post_count";
+
+  /// <numeric tag id>,
+  final int id;
+  const TagDbEntry({
+    required this.id,
+    required super.name,
+    required super.category,
+    required super.postCount,
+  });
+  TagDbEntry.fromCsv(super.csv)
+      : id = int.parse(csv.split(",").first),
+        super.fromCsv();
+  TagDbEntry.fromJson(super.json)
+      : id = json["id"] as int,
+        super.fromJson();
+  String toCsv() => "$id,$name,${category.index},$postCount";
+  @override
+  Map<String, dynamic> toJson() => super.toJson()..addAll({"id": id});
+
+  /// Database archives have upwards of a million entries. Use Flutter's
+  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
+  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
+  static List<TagDbEntry> parseCsv(String csv) => (csv.split("\n")
+        ..removeAt(0)
+        ..removeLast())
+      .map(TagDbEntry.fromCsv)
+      .toList();
+
+  static List<String> rootParse(String e) {
+    var t = e.split(",");
+    if (e.contains('"')) {
+      t = [
+        t[0],
+        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
+        t[t.length - 2],
+        t.last
+      ];
+    }
+    if (t.length == 5) throw StateError("Shouldn't be possible");
+    return t;
+  }
+}
+
+/// Database files contain upwards of a million entries. In cases where the
+/// [TagDbEntry.id] is not important, this class may be used to minimize the
+/// memory and performance cost of parsing and storing a large number of entries.
+class TagDbEntrySlim implements Comparable<TagDbEntrySlim> {
+  static const csvHeader = "id,name,category,post_count";
+
+  /// <tag display name>,
+  final String name;
+
+  /// <numeric category id>,
+  final TagCategory category;
+
+  /// <# matching visible posts>,
+  final int postCount;
+  const TagDbEntrySlim({
+    required this.name,
+    required this.category,
+    required this.postCount,
+  });
+  TagDbEntrySlim.fromCsv(String csv)
+      : name = csv.contains('"')
+            ? csv.substring(csv.indexOf('"'), csv.lastIndexOf('"') + 1)
+            : csv.split(",")[1],
+        category = TagCategory.values[int.parse(csv.contains('"')
+            ? csv.split(",")[csv.split(",").length - 2]
+            : csv.split(",")[2])],
+        postCount = int.parse(csv.split(",").last);
+  TagDbEntrySlim.fromJson(Map<String, dynamic> json)
+      : name = json["name"] as String,
+        category = json["category"] as TagCategory,
+        postCount = json["post_count"] as int;
+  @override
+  int compareTo(TagDbEntrySlim other) => other.postCount - postCount;
+
+  Map<String, dynamic> toJson() => {
+        "name": name,
+        "category": category.index,
+        "post_count": postCount,
+      };
+
+  /// Database archives have upwards of a million entries. Use Flutter's
+  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
+  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
+  static List<TagDbEntrySlim> parseCsv(String csv) => (csv.split("\n")
+        ..removeAt(0)
+        ..removeLast())
+      .map(TagDbEntrySlim.fromCsv)
+      .toList();
+  // int compareTo(TagDbEntrySlim other) =>
+  //     (other.postCount - (other.postCount % 5)) - (postCount - postCount % 5);
+  static List<String> rootParse(String e) {
+    var t = e.split(",");
+    if (e.contains('"')) {
+      t = [
+        t[0],
+        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
+        t[t.length - 2],
+        t.last
+      ];
+    }
+    // if (t.length == 5) t = [t[0], t[1] + t[2], t[3], t[4]];
+    if (t.length == 5) throw StateError("Shouldn't be possible");
+    return t;
+  }
+}
+
+/// TODO: Cancelling an unvote returns ourScore as 0. Change to reflect.
+/// 
+class UpdatedScore extends Score implements VoteResult {
+  /// Our score is 1 (for upvoted), 0 (for no vote), or -1 (for downvoted).
+  @override
+  final int ourScore;
+
+  const UpdatedScore({
+    required super.up,
+    required super.down,
+    required int score,
+    required this.ourScore,
+    /* this.castVote,
+    this.noUnvote, */
+  }) : super(total: score);
+
+  UpdatedScore.fromJson(Map<String, dynamic> json)
+      : this(
+          up: json["up"] as int,
+          down: json["down"] as int,
+          score: json["score"] as int,
+          ourScore: json["our_score"] as int,
+        );
+  UpdatedScore.fromJsonRaw(String json) : this.fromJson(dc.jsonDecode(json));
+  const UpdatedScore.inherited({
+    required super.up,
+    required super.down,
+    required super.total,
+    required this.ourScore,
+    /* this.castVote,
+    this.noUnvote, */
+  });
+
+  bool get isDownvoted => ourScore < 0;
+
+  /* /// Cast vote.
+  @override
+  final int? voteCast;
+
+  /// Our score is 1 (for upvoted), 0 (for no vote), or -1 (for downvoted).
+  int? get ourScoreTrue => noUnvote != null ? ourScore == 0 && noUnvote! ?  : null;
+
+  @override
+  final bool? noUnvote; */
+
+  bool get isUpvoted => ourScore > 0;
+  bool get isVotedOn => ourScore != 0;
+
+  /// The total score (up + down).
+  @override
+  int get score => total;
+
+  /// `true` if the user upvoted this post, `false` if the user downvoted this post, `null` if the user didn't vote on this post.
+  bool? get voteState => switch (ourScore) {
+        > 0 => true,
+        < 0 => false,
+        == 0 => null,
+        _ => null,
+      };
+
+  @override
+  UpdatedScore copyWith({
+    int? up,
+    int? down,
+    int? score,
+    int? total,
+    int? ourScore,
+  }) =>
+      UpdatedScore(
+        up: up ?? this.up,
+        down: down ?? this.down,
+        score: score ?? total ?? this.score,
+        ourScore: ourScore ?? this.ourScore,
+      );
+
+  @override
+  Map<String, dynamic> toJson() => {
+        "up": up,
+        "down": down,
+        "score": score,
+        "total": total,
+        "our_score": ourScore,
+      };
+  static int determineOurTrueScore(int castVote, int ourScore, bool noUnvote) {
+    if (noUnvote) {
+      if (castVote > 0 && ourScore >= 0) {
+        return 1;
+      } else if (castVote < 0 && ourScore <= 0) {
+        return -1;
+      } else {
+        return ourScore;
+      }
+    } else {
+      return ourScore;
+    }
+  }
 }
 
 class User extends model.User with UserMixin {
@@ -278,6 +2064,26 @@ class User extends model.User with UserMixin {
     required this.avatarId,
   });
 
+  User.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        createdAt = DateTime.parse(json["created_at"]),
+        name = json["name"],
+        level = json["level"],
+        baseUploadLimit = json["base_upload_limit"],
+        noteUpdateCount = json["note_update_count"],
+        postUpdateCount = json["post_update_count"],
+        postUploadCount = json["post_upload_count"],
+        isBanned = json["is_banned"],
+        canApprovePosts = json["can_approve_posts"],
+        canUploadFree = json["can_upload_free"],
+        levelString = UserLevel(json["level_string"]),
+        avatarId = json["avatar_id"];
+
+  factory User.fromRawJson(String str) {
+    var t = dc.json.decode(str);
+    return (t is List) ? User.fromJson(t[0]) : User.fromJson(t);
+  }
+
   User copyWith({
     int? id,
     DateTime? createdAt,
@@ -310,26 +2116,6 @@ class User extends model.User with UserMixin {
       );
 
   User copyWithInstance(User? other) => (other ?? this).copyWith();
-
-  factory User.fromRawJson(String str) {
-    var t = dc.json.decode(str);
-    return (t is List) ? User.fromJson(t[0]) : User.fromJson(t);
-  }
-
-  User.fromJson(Map<String, dynamic> json)
-      : id = json["id"],
-        createdAt = DateTime.parse(json["created_at"]),
-        name = json["name"],
-        level = json["level"],
-        baseUploadLimit = json["base_upload_limit"],
-        noteUpdateCount = json["note_update_count"],
-        postUpdateCount = json["post_update_count"],
-        postUploadCount = json["post_upload_count"],
-        isBanned = json["is_banned"],
-        canApprovePosts = json["can_approve_posts"],
-        canUploadFree = json["can_upload_free"],
-        levelString = UserLevel(json["level_string"]),
-        avatarId = json["avatar_id"];
 }
 
 class UserDetailed extends User with UserDetailedMixin {
@@ -438,6 +2224,24 @@ class UserDetailed extends User with UserDetailedMixin {
     required this.profileArtInfo,
     required this.favoriteCount,
   });
+  UserDetailed.fromJson(super.json)
+      : wikiPageVersionCount = json["wiki_page_version_count"],
+        artistVersionCount = json["artist_version_count"],
+        poolVersionCount = json["pool_version_count"],
+        forumPostCount = json["forum_post_count"],
+        commentCount = json["comment_count"],
+        flagCount = json["flag_count"],
+        favoriteCount = json["favorite_count"],
+        positiveFeedbackCount = json["positive_feedback_count"],
+        neutralFeedbackCount = json["neutral_feedback_count"],
+        negativeFeedbackCount = json["negative_feedback_count"],
+        uploadLimit = json["upload_limit"],
+        profileAbout = json["profile_about"],
+        profileArtInfo = json["profile_artinfo"],
+        super.fromJson();
+  factory UserDetailed.fromRawJson(String str) =>
+      UserDetailed.fromJson(dc.json.decode(str));
+
   @override
   UserDetailed copyWith({
     int? avatarId = -1,
@@ -497,6 +2301,7 @@ class UserDetailed extends User with UserDetailedMixin {
         profileArtInfo: profileArtInfo ?? this.profileArtInfo,
         favoriteCount: favoriteCount ?? this.favoriteCount,
       );
+
   @override
   UserDetailed copyWithInstance(User? other) {
     var userD = other is UserDetailed ? other : null;
@@ -597,27 +2402,6 @@ class UserDetailed extends User with UserDetailedMixin {
     };
   }
 
-  factory UserDetailed.fromRawJson(String str) =>
-      UserDetailed.fromJson(dc.json.decode(str));
-
-  @override
-  String toRawJson() => dc.json.encode(toJson());
-
-  UserDetailed.fromJson(super.json)
-      : wikiPageVersionCount = json["wiki_page_version_count"],
-        artistVersionCount = json["artist_version_count"],
-        poolVersionCount = json["pool_version_count"],
-        forumPostCount = json["forum_post_count"],
-        commentCount = json["comment_count"],
-        flagCount = json["flag_count"],
-        favoriteCount = json["favorite_count"],
-        positiveFeedbackCount = json["positive_feedback_count"],
-        neutralFeedbackCount = json["neutral_feedback_count"],
-        negativeFeedbackCount = json["negative_feedback_count"],
-        uploadLimit = json["upload_limit"],
-        profileAbout = json["profile_about"],
-        profileArtInfo = json["profile_artinfo"],
-        super.fromJson();
   @override
   Map<String, dynamic> toJson() => {
         "wiki_page_version_count": wikiPageVersionCount,
@@ -634,6 +2418,29 @@ class UserDetailed extends User with UserDetailedMixin {
         "profile_about": profileAbout,
         "profile_artinfo": profileArtInfo,
       }..addAll(super.toJson());
+  @override
+  String toRawJson() => dc.json.encode(toJson());
+}
+
+mixin UserDetailedMixin on UserMixin {
+  int get artistVersionCount;
+  int get commentCount;
+  int get favoriteCount;
+  int get flagCount;
+  int get forumPostCount;
+  int get negativeFeedbackCount;
+  int get neutralFeedbackCount;
+  int get poolVersionCount;
+  int get positiveFeedbackCount;
+  String get profileAbout;
+  String get profileArtInfo;
+  int get uploadLimit;
+  int get wikiPageVersionCount;
+}
+
+mixin UserHelpers on model.UserLoggedIn {
+  List<String> get blacklistedTagsList => blacklistedTags.split(RegExp(r'\s'));
+  Set<String> get blacklistedTagsSet => blacklistedTagsList.toSet();
 }
 
 class UserLoggedIn extends User with CurrentUser {
@@ -844,6 +2651,51 @@ class UserLoggedIn extends User with CurrentUser {
     required this.hasMail,
   });
 
+  UserLoggedIn.fromJson(super.json)
+      : blacklistUsers = json["blacklist_users"],
+        descriptionCollapsedInitially = json["description_collapsed_initially"],
+        hideComments = json["hide_comments"],
+        showHiddenComments = json["show_hidden_comments"],
+        showPostStatistics = json["show_post_statistics"],
+        receiveEmailNotifications = json["receive_email_notifications"],
+        enableKeyboardNavigation = json["enable_keyboard_navigation"],
+        enablePrivacyMode = json["enable_privacy_mode"],
+        styleUsernames = json["style_usernames"],
+        enableAutoComplete = json["enable_auto_complete"],
+        disableCroppedThumbnails = json["disable_cropped_thumbnails"],
+        enableSafeMode = json["enable_safe_mode"],
+        disableResponsiveMode = json["disable_responsive_mode"],
+        noFlagging = json["no_flagging"],
+        disableUserDmails = json["disable_user_dmails"],
+        enableCompactUploader = json["enable_compact_uploader"],
+        replacementsBeta = json["replacements_beta"],
+        updatedAt = DateTime.parse(json["updated_at"]),
+        email = json["email"],
+        lastLoggedInAt = DateTime.parse(json["last_logged_in_at"]),
+        lastForumReadAt = DateTime.parse(json["last_forum_read_at"]),
+        recentTags = json["recent_tags"],
+        commentThreshold = json["comment_threshold"],
+        defaultImageSize =
+            DefaultImageSize.fromJson(json["default_image_size"]),
+        favoriteTags = json["favorite_tags"],
+        blacklistedTags = json["blacklisted_tags"],
+        timeZone = json["time_zone"],
+        perPage = json["per_page"],
+        customStyle = json["custom_style"],
+        favoriteCount = json["favorite_count"],
+        apiRegenMultiplier = json["api_regen_multiplier"],
+        apiBurstLimit = json["api_burst_limit"],
+        remainingApiLimit = json["remaining_api_limit"],
+        statementTimeout = json["statement_timeout"],
+        favoriteLimit = json["favorite_limit"],
+        tagQueryLimit = json["tag_query_limit"],
+        hasMail = json["has_mail"],
+        super.fromJson();
+  factory UserLoggedIn.fromRawJson(String str) {
+    var t = dc.json.decode(str);
+    return (t is List) ? UserLoggedIn.fromJson(t[0]) : UserLoggedIn.fromJson(t);
+  }
+
   @override
   UserLoggedIn copyWith({
     int? id,
@@ -955,6 +2807,7 @@ class UserLoggedIn extends User with CurrentUser {
         tagQueryLimit: tagQueryLimit ?? this.tagQueryLimit,
         hasMail: hasMail ?? this.hasMail,
       );
+
   @override
   UserLoggedIn copyWithInstance(User? other) {
     var userL = other is UserLoggedIn ? other : null;
@@ -1080,55 +2933,6 @@ class UserLoggedIn extends User with CurrentUser {
     };
   }
 
-  factory UserLoggedIn.fromRawJson(String str) {
-    var t = dc.json.decode(str);
-    return (t is List) ? UserLoggedIn.fromJson(t[0]) : UserLoggedIn.fromJson(t);
-  }
-
-  @override
-  String toRawJson() => dc.json.encode(toJson());
-
-  UserLoggedIn.fromJson(super.json)
-      : blacklistUsers = json["blacklist_users"],
-        descriptionCollapsedInitially = json["description_collapsed_initially"],
-        hideComments = json["hide_comments"],
-        showHiddenComments = json["show_hidden_comments"],
-        showPostStatistics = json["show_post_statistics"],
-        receiveEmailNotifications = json["receive_email_notifications"],
-        enableKeyboardNavigation = json["enable_keyboard_navigation"],
-        enablePrivacyMode = json["enable_privacy_mode"],
-        styleUsernames = json["style_usernames"],
-        enableAutoComplete = json["enable_auto_complete"],
-        disableCroppedThumbnails = json["disable_cropped_thumbnails"],
-        enableSafeMode = json["enable_safe_mode"],
-        disableResponsiveMode = json["disable_responsive_mode"],
-        noFlagging = json["no_flagging"],
-        disableUserDmails = json["disable_user_dmails"],
-        enableCompactUploader = json["enable_compact_uploader"],
-        replacementsBeta = json["replacements_beta"],
-        updatedAt = DateTime.parse(json["updated_at"]),
-        email = json["email"],
-        lastLoggedInAt = DateTime.parse(json["last_logged_in_at"]),
-        lastForumReadAt = DateTime.parse(json["last_forum_read_at"]),
-        recentTags = json["recent_tags"],
-        commentThreshold = json["comment_threshold"],
-        defaultImageSize =
-            DefaultImageSize.fromJson(json["default_image_size"]),
-        favoriteTags = json["favorite_tags"],
-        blacklistedTags = json["blacklisted_tags"],
-        timeZone = json["time_zone"],
-        perPage = json["per_page"],
-        customStyle = json["custom_style"],
-        favoriteCount = json["favorite_count"],
-        apiRegenMultiplier = json["api_regen_multiplier"],
-        apiBurstLimit = json["api_burst_limit"],
-        remainingApiLimit = json["remaining_api_limit"],
-        statementTimeout = json["statement_timeout"],
-        favoriteLimit = json["favorite_limit"],
-        tagQueryLimit = json["tag_query_limit"],
-        hasMail = json["has_mail"],
-        super.fromJson();
-
   @override
   Map<String, dynamic> toJson() => {
         // "id": id,
@@ -1182,6 +2986,9 @@ class UserLoggedIn extends User with CurrentUser {
         "tag_query_limit": tagQueryLimit,
         "has_mail": hasMail,
       }..addAll(super.toJson());
+
+  @override
+  String toRawJson() => dc.json.encode(toJson());
 }
 
 class UserLoggedInDetail extends UserLoggedIn
@@ -1301,6 +3108,23 @@ class UserLoggedInDetail extends UserLoggedIn
     required super.tagQueryLimit,
     required super.hasMail,
   });
+
+  UserLoggedInDetail.fromJson(super.json)
+      : wikiPageVersionCount = json["wiki_page_version_count"],
+        artistVersionCount = json["artist_version_count"],
+        poolVersionCount = json["pool_version_count"],
+        forumPostCount = json["forum_post_count"],
+        commentCount = json["comment_count"],
+        flagCount = json["flag_count"],
+        positiveFeedbackCount = json["positive_feedback_count"],
+        neutralFeedbackCount = json["neutral_feedback_count"],
+        negativeFeedbackCount = json["negative_feedback_count"],
+        uploadLimit = json["upload_limit"],
+        profileAbout = json["profile_about"],
+        profileArtInfo = json["profile_artinfo"],
+        super.fromJson();
+  factory UserLoggedInDetail.fromRawJson(String str) =>
+      UserLoggedInDetail.fromJson(dc.json.decode(str));
 
   @override
   UserLoggedInDetail copyWith({
@@ -1439,6 +3263,7 @@ class UserLoggedInDetail extends UserLoggedIn
         tagQueryLimit: tagQueryLimit ?? this.tagQueryLimit,
         hasMail: hasMail ?? this.hasMail,
       );
+
   @override
   UserLoggedInDetail copyWithInstance(User? other) {
     var userD = other is UserDetailed ? other : null;
@@ -1518,27 +3343,6 @@ class UserLoggedInDetail extends UserLoggedIn
     );
   }
 
-  factory UserLoggedInDetail.fromRawJson(String str) =>
-      UserLoggedInDetail.fromJson(dc.json.decode(str));
-
-  @override
-  String toRawJson() => dc.json.encode(toJson());
-
-  UserLoggedInDetail.fromJson(super.json)
-      : wikiPageVersionCount = json["wiki_page_version_count"],
-        artistVersionCount = json["artist_version_count"],
-        poolVersionCount = json["pool_version_count"],
-        forumPostCount = json["forum_post_count"],
-        commentCount = json["comment_count"],
-        flagCount = json["flag_count"],
-        positiveFeedbackCount = json["positive_feedback_count"],
-        neutralFeedbackCount = json["neutral_feedback_count"],
-        negativeFeedbackCount = json["negative_feedback_count"],
-        uploadLimit = json["upload_limit"],
-        profileAbout = json["profile_about"],
-        profileArtInfo = json["profile_artinfo"],
-        super.fromJson();
-
   @override
   Map<String, dynamic> toJson() => {
         "wiki_page_version_count": wikiPageVersionCount,
@@ -1554,566 +3358,29 @@ class UserLoggedInDetail extends UserLoggedIn
         "profile_about": profileAbout,
         "profile_artinfo": profileArtInfo,
       }..addAll(super.toJson());
+
+  @override
+  String toRawJson() => dc.json.encode(toJson());
 }
 
-mixin UserMixin {
-  int get id;
-  DateTime get createdAt;
-  String get name;
-  int get level;
+mixin UserMixin on model.BaseModel {
+  int? get avatarId;
   int get baseUploadLimit;
-  int get postUploadCount;
-  int get postUpdateCount;
-  int get noteUpdateCount;
-  bool get isBanned;
   bool get canApprovePosts;
   bool get canUploadFree;
+  DateTime get createdAt;
+  int get id;
+  bool get isBanned;
+  int get level;
   UserLevel get levelString;
-  int? get avatarId;
-}
-mixin UserDetailedMixin on UserMixin {
-  int get wikiPageVersionCount;
-  int get artistVersionCount;
-  int get poolVersionCount;
-  int get forumPostCount;
-  int get commentCount;
-  int get flagCount;
-  int get favoriteCount;
-  int get positiveFeedbackCount;
-  int get neutralFeedbackCount;
-  int get negativeFeedbackCount;
-  int get uploadLimit;
-  String get profileAbout;
-  String get profileArtInfo;
-}
-mixin CurrentUser on UserMixin {
-  bool get blacklistUsers;
-  bool get descriptionCollapsedInitially;
-  bool get hideComments;
-  bool get showHiddenComments;
-  bool get showPostStatistics;
-  bool get receiveEmailNotifications;
-  bool get enableKeyboardNavigation;
-  bool get enablePrivacyMode;
-  bool get styleUsernames;
-  bool get enableAutoComplete;
-  bool get enableSafeMode;
-  bool get disableResponsiveMode;
-  bool get noFlagging;
-  bool get disableUserDmails;
-  bool get enableCompactUploader;
-  bool get replacementsBeta;
-  DateTime get updatedAt;
-  String get email;
-  DateTime get lastLoggedInAt;
-  DateTime get lastForumReadAt;
-  String get recentTags;
-  int get commentThreshold;
-  DefaultImageSize get defaultImageSize;
-  String get favoriteTags;
-  String get blacklistedTags;
-
-  /// https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-  String get timeZone;
-  int get perPage;
-  String get customStyle;
-  int get favoriteCount;
-  int get apiRegenMultiplier;
-  int get apiBurstLimit;
-  int get remainingApiLimit;
-  int get statementTimeout;
-  int get favoriteLimit;
-  int get tagQueryLimit;
-  bool get hasMail;
-  bool get disableCroppedThumbnails;
-}
-
-enum DefaultImageSize {
-  large._(),
-  fit._(),
-  fitv._(),
-  original._();
-
-  const DefaultImageSize._();
-  factory DefaultImageSize.fromJson(String json) => switch (json) {
-        "large" => large,
-        "fit" => fit,
-        "fitv" => fitv,
-        "original" => original,
-        _ => throw ArgumentError.value(json, "json", "type not supported"),
-      };
-  String toJson() => name;
-}
-
-Type findUserModelType(Map<String, dynamic> json) =>
-    json["wiki_page_version_count"] != null
-        ? json["api_burst_limit"] != null
-            ? UserLoggedInDetail
-            : UserDetailed
-        : json["api_burst_limit"] != null
-            ? UserLoggedIn
-            : User;
-
-/// Gets the mot specific user model based on the provided [json].
-User userFromJson(Map<String, dynamic> json) =>
-    json["wiki_page_version_count"] != null
-        ? json["api_burst_limit"] != null
-            ? UserLoggedInDetail.fromJson(json)
-            : UserDetailed.fromJson(json)
-        : json["api_burst_limit"] != null
-            ? UserLoggedIn.fromJson(json)
-            : User.fromJson(json);
-
-mixin UserHelpers on model.UserLoggedIn {
-  Set<String> get blacklistedTagsSet => blacklistedTagsList.toSet();
-  List<String> get blacklistedTagsList => blacklistedTags.split(RegExp(r'\s'));
-}
-
-/// https://e621.net/post_sets.json?35356
-class PostSet {
-  final int id;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int creatorId;
-  final bool isPublic;
-  final String name;
-  final String shortname;
-  final String description;
-  final int postCount;
-  final bool transferOnDelete;
-  final List<int> postIds;
-
-  String get searchById => 'set:$id';
-  String get searchByShortname => 'set:$shortname';
-
-  const PostSet({
-    required this.id,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.creatorId,
-    required this.isPublic,
-    required this.name,
-    required this.shortname,
-    required this.description,
-    required this.postCount,
-    required this.transferOnDelete,
-    required this.postIds,
-  });
-
-  PostSet copyWith({
-    DateTime? createdAt,
-    int? creatorId,
-    String? description,
-    int? id,
-    bool? isPublic,
-    String? name,
-    int? postCount,
-    List<int>? postIds,
-    String? shortname,
-    bool? transferOnDelete,
-    DateTime? updatedAt,
-  }) =>
-      PostSet(
-        createdAt: createdAt ?? this.createdAt,
-        creatorId: creatorId ?? this.creatorId,
-        description: description ?? this.description,
-        id: id ?? this.id,
-        isPublic: isPublic ?? this.isPublic,
-        name: name ?? this.name,
-        postCount: postCount ?? this.postCount,
-        postIds: postIds ?? this.postIds,
-        shortname: shortname ?? this.shortname,
-        transferOnDelete: transferOnDelete ?? this.transferOnDelete,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
-
-  factory PostSet.fromRawJson(String str) =>
-      PostSet.fromJson(dc.json.decode(str));
-
-  String toRawJson() => dc.json.encode(toJson());
-
-  PostSet.fromJson(Map<String, dynamic> json)
-      : id = json["id"],
-        createdAt = DateTime.parse(json["created_at"]),
-        updatedAt = DateTime.parse(json["updated_at"]),
-        creatorId = json["creator_id"],
-        isPublic = json["is_public"],
-        name = json["name"],
-        shortname = json["shortname"],
-        description = json["description"],
-        postCount = json["post_count"],
-        transferOnDelete = json["transfer_on_delete"],
-        postIds = (json["post_ids"] as List).cast();
-  Map<String, dynamic> toJson() => {
-        "id": id,
-        "created_at": createdAt.toIso8601String(),
-        "updated_at": updatedAt.toIso8601String(),
-        "creator_id": creatorId,
-        "is_public": isPublic,
-        "name": name,
-        "shortname": shortname,
-        "description": description,
-        "post_count": postCount,
-        "transfer_on_delete": transferOnDelete,
-        "post_ids": postIds,
-      };
-}
-
-class Post {
-  // #region Json Fields
-  /// The ID number of the post.
-  final int id;
-
-  /// The time the post was created in the format of YYYY-MM-DDTHH:MM:SS.MS+00:00.
-  final DateTime createdAt;
-
-  /// The time the post was last updated in the format of YYYY-MM-DDTHH:MM:SS.MS+00:00.
-  final DateTime updatedAt;
-
-  /// (array group)
-  final File file;
-
-  /// (array group)
-  final Preview preview;
-
-  /// (array group)
-  final Sample sample;
-
-  /// (array group)
-  final Score score;
-
-  /// (array group)
-  final PostTags tags;
-
-  /// A JSON array of tags that are locked on the post.
-  final List<String> lockedTags;
-
-  /// An ID that increases for every post alteration on E6 (explained below)
-  final int changeSeq;
-
-  /// (array group)
-  final PostFlags flags;
-
-  /// The post’s rating. Either s, q or e.
-  final String rating;
-
-  /// How many people have favorited the post.
-  final int favCount;
-
-  /// The source field of the post.
-  final List<String> sources;
-
-  /// An array of Pool IDs that the post is a part of.
-  final List<int> pools;
-
-  /// (array group)
-  final PostRelationships relationships;
-
-  /// The ID of the user that approved the post, if available.
-  final int? approverId;
-
-  /// The ID of the user that uploaded the post.
-  final int uploaderId;
-
-  /// The post’s description.
-  final String description;
-
-  /// The count of comments on the post.
-  final int commentCount;
-
-  /// If provided auth credentials, will return if the authenticated user has
-  /// favorited the post or not. If not provided, will be false.
-  final bool isFavorited;
-
-  // #region Not Documented
-  /// Guess
-  final bool hasNotes;
-
-  /// If post is a video, the video length. Otherwise, null.
-  final num? duration;
-  // #endregion Not Documented
-  // #endregion Json Fields
-
-  Post({
-    required this.id,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.file,
-    required this.preview,
-    required this.sample,
-    required this.score,
-    required this.tags,
-    required this.lockedTags,
-    required this.changeSeq,
-    required this.flags,
-    required this.rating,
-    required this.favCount,
-    required this.sources,
-    required this.pools,
-    required this.relationships,
-    required this.approverId,
-    required this.uploaderId,
-    required this.description,
-    required this.commentCount,
-    required this.isFavorited,
-    required this.hasNotes,
-    required this.duration,
-  });
-
-  factory Post.fromRawJson(String json) {
-    var t = dc.jsonDecode(json);
-    try {
-      return Post.fromJson(t);
-    } catch (e) {
-      return Post.fromJson(t["post"]);
-    }
-  }
-  static Iterable<Post> fromRawJsonResults(String json) {
-    var t = dc.jsonDecode(json);
-    return t["posts"] != null
-        ? (t["posts"] as Iterable).map((e) => Post.fromJson(e))
-        : t is Iterable
-            ? t.map((e) => Post.fromJson(e))
-            : t["post"] != null
-                ? [Post.fromJson(t["post"])]
-                : [Post.fromJson(t)];
-  }
-
-  factory Post.fromJson(Map<String, dynamic> json) => Post(
-        id: json["id"] as int,
-        createdAt: DateTime.parse(json["created_at"]),
-        updatedAt: DateTime.parse(json["updated_at"]),
-        file: File.fromJson(json["file"]),
-        preview: Preview.fromJson(json["preview"]),
-        sample: Sample.fromJson(json["sample"]),
-        score: Score.fromJson(json["score"]),
-        tags: PostTags.fromJson(json["tags"]),
-        lockedTags: (json["locked_tags"] as List).cast<String>(),
-        changeSeq: json["change_seq"] as int,
-        flags: PostBitFlags.fromJson(json["flags"]),
-        rating: json["rating"] as String,
-        favCount: json["fav_count"] as int,
-        sources: (json["sources"] as List).cast<String>(),
-        pools: (json["pools"] as List).cast<int>(),
-        relationships: PostRelationships.fromJson(json["relationships"]),
-        approverId: json["approver_id"] as int?,
-        uploaderId: json["uploader_id"] as int,
-        description: json["description"] as String,
-        commentCount: json["comment_count"] as int,
-        isFavorited: json["is_favorited"] as bool,
-        hasNotes: json["has_notes"] as bool,
-        duration: json["duration"] as num?,
-      );
-  Post copyWith({
-    int? id,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-    File? file,
-    Preview? preview,
-    Sample? sample,
-    Score? score,
-    PostTags? tags,
-    List<String>? lockedTags,
-    int? changeSeq,
-    PostFlags? flags,
-    String? rating,
-    int? favCount,
-    List<String>? sources,
-    List<int>? pools,
-    PostRelationships? relationships,
-    int? approverId = -1,
-    int? uploaderId,
-    String? description,
-    int? commentCount,
-    bool? isFavorited,
-    bool? hasNotes,
-    num? duration = -1,
-  }) =>
-      Post(
-        id: id ?? this.id,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        file: file ?? this.file,
-        preview: preview ?? this.preview,
-        sample: sample ?? this.sample,
-        score: score ?? this.score,
-        tags: tags ?? this.tags,
-        lockedTags: lockedTags ?? this.lockedTags,
-        changeSeq: changeSeq ?? this.changeSeq,
-        flags: flags ?? this.flags,
-        rating: rating ?? this.rating,
-        favCount: favCount ?? this.favCount,
-        sources: sources ?? this.sources,
-        pools: pools ?? this.pools,
-        relationships: relationships ?? this.relationships,
-        approverId: (approverId ?? 1) < 0 ? approverId : this.approverId,
-        uploaderId: uploaderId ?? this.uploaderId,
-        description: description ?? this.description,
-        commentCount: commentCount ?? this.commentCount,
-        isFavorited: isFavorited ?? this.isFavorited,
-        hasNotes: hasNotes ?? this.hasNotes,
-        duration: (duration ?? 1) < 0 ? duration : this.duration,
-      );
-}
-
-class File extends Preview {
-  /// The file’s extension.
-  final String ext;
-
-  /// The size of the file in bytes.
-  final int size;
-
-  /// The md5 of the file.
-  final String md5;
-
-  const File({
-    required super.width,
-    required super.height,
-    required this.ext,
-    required this.size,
-    required this.md5,
-    required super.url,
-  });
-  File._useParentFromJson({
-    required this.ext,
-    required this.size,
-    required this.md5,
-    required Map<String, dynamic> json,
-  }) : super.fromJsonGen(json);
-  factory File.fromJson(Map<String, dynamic> json) => File._useParentFromJson(
-        ext: json["ext"] as String,
-        size: json["size"] as int,
-        md5: json["md5"] as String,
-        json: json,
-      );
-  @override
-  File copyWith({
-    String? ext,
-    int? size,
-    String? md5,
-    String? url,
-    int? width,
-    int? height,
-  }) =>
-      File(
-        ext: ext ?? this.ext,
-        size: size ?? this.size,
-        md5: md5 ?? this.md5,
-        height: height ?? this.height,
-        url: url ?? this.url,
-        width: width ?? this.width,
-      );
-}
-
-class Preview {
-  /// The width of the file.
-  final int width;
-
-  /// The height of the file.
-  final int height;
-
-  /// {@template E6Preview.url}
-  ///
-  /// The URL where the preview file is hosted on E6
-  ///
-  /// If the post is a video, this is a preview image from the video
-  ///
-  /// If auth is not provided, [this may be null][1]. This is currently replaced
-  /// with an empty string in from json.
-  ///
-  /// [1]: https://e621.net/help/global_blacklist
-  ///
-  /// {@endtemplate}
-  final String url;
-
-  const Preview({
-    required this.width,
-    required this.height,
-    required this.url,
-  });
-  factory Preview.fromJson(Map<String, dynamic> json) => Preview(
-        width: json["width"],
-        height: json["height"],
-        url: json["url"] as String? ?? "",
-      );
-  Preview.fromJsonGen(Map<String, dynamic> json)
-      : width = json["width"],
-        height = json["height"],
-        url = json["url"] as String? ?? "";
-  Preview copyWith({
-    String? url,
-    int? width,
-    int? height,
-  }) =>
-      Preview(
-        height: height ?? this.height,
-        url: url ?? this.url,
-        width: width ?? this.width,
-      );
-}
-
-class Sample extends Preview {
-  /// If the post has a sample/thumbnail or not. (True/False)
-  final bool has;
-
-  const Sample({
-    required this.has,
-    required super.width,
-    required super.height,
-    required super.url,
-  });
-  Sample._useParentFromJson({
-    required this.has,
-    required Map<String, dynamic> json,
-  }) : super.fromJsonGen(json);
-  factory Sample.fromJson(Map<String, dynamic> json) =>
-      Sample._useParentFromJson(
-        has: json["has"],
-        json: json,
-      );
-}
-
-class Score {
-  /// The number of times voted up.
-  final int up;
-
-  /// A negative number representing the number of times voted down.
-  final int down;
-
-  /// The total score (up + down).
-  final int total;
-
-  const Score({
-    required this.up,
-    required this.down,
-    required this.total,
-  });
-  factory Score.fromJsonRaw(String json) => Score.fromJson(dc.jsonDecode(json));
-  factory Score.fromJson(Map<String, dynamic> json) => Score(
-        up: json["up"] as int,
-        down: json["down"] as int,
-        total: json["total"] as int,
-      );
-
-  Map<String, dynamic> toJson() => {
-        "up": up,
-        "down": down,
-        "total": total,
-      };
-
-  Score copyWith({
-    int? up,
-    int? down,
-    int? total,
-  }) =>
-      Score(
-        up: up ?? this.up,
-        down: down ?? this.down,
-        total: total ?? this.total,
-      );
+  String get name;
+  int get noteUpdateCount;
+  int get postUpdateCount;
+  int get postUploadCount;
 }
 
 /// Result of successful vote call.
+///
 class VoteResult {
   /// The number of times voted up.
   final int up;
@@ -2133,21 +3400,14 @@ class VoteResult {
     required this.score,
     required this.ourScore,
   });
-  factory VoteResult.fromJsonRaw(String json) =>
-      VoteResult.fromJson(dc.jsonDecode(json));
-  factory VoteResult.fromJson(Map<String, dynamic> json) => VoteResult(
-        up: json["up"] as int,
-        down: json["down"] as int,
-        score: json["score"] as int,
-        ourScore: json["our_score"] as int,
-      );
-
-  Map<String, dynamic> toJson() => {
-        "up": up,
-        "down": down,
-        "score": score,
-        "our_score": ourScore,
-      };
+  VoteResult.fromJson(Map<String, dynamic> json)
+      : this(
+          up: json["up"] as int,
+          down: json["down"] as int,
+          score: json["score"] as int,
+          ourScore: json["our_score"] as int,
+        );
+  VoteResult.fromJsonRaw(String json) : this.fromJson(dc.jsonDecode(json));
 
   VoteResult copyWith({
     int? up,
@@ -2161,487 +3421,16 @@ class VoteResult {
         score: score ?? this.score,
         ourScore: ourScore ?? this.ourScore,
       );
-}
 
-/// TODO: Cancelling an unvote returns ourScore as 0. Change to reflect.
-class UpdatedScore extends Score implements VoteResult {
-  /// The total score (up + down).
-  @override
-  int get score => total;
-
-  /// Our score is 1 (for upvoted), 0 (for no vote), or -1 (for downvoted).
-  @override
-  final int ourScore;
-
-  /* /// Cast vote.
-  @override
-  final int? voteCast;
-
-  /// Our score is 1 (for upvoted), 0 (for no vote), or -1 (for downvoted).
-  int? get ourScoreTrue => noUnvote != null ? ourScore == 0 && noUnvote! ?  : null;
-
-  @override
-  final bool? noUnvote; */
-
-  bool get isUpvoted => ourScore > 0;
-  bool get isDownvoted => ourScore < 0;
-  bool get isVotedOn => ourScore != 0;
-
-  /// `true` if the user upvoted this post, `false` if the user downvoted this post, `null` if the user didn't vote on this post.
-  bool? get voteState => switch (ourScore) {
-        > 0 => true,
-        < 0 => false,
-        == 0 => null,
-        _ => null,
-      };
-
-  const UpdatedScore.inherited({
-    required super.up,
-    required super.down,
-    required super.total,
-    required this.ourScore,
-    /* this.castVote,
-    this.noUnvote, */
-  });
-  const UpdatedScore({
-    required super.up,
-    required super.down,
-    required int score,
-    required this.ourScore,
-    /* this.castVote,
-    this.noUnvote, */
-  }) : super(total: score);
-  factory UpdatedScore.fromJsonRaw(String json) =>
-      UpdatedScore.fromJson(dc.jsonDecode(json));
-  UpdatedScore.fromJson(Map<String, dynamic> json)
-      : this(
-          up: json["up"] as int,
-          down: json["down"] as int,
-          score: json["score"] as int,
-          ourScore: json["our_score"] as int,
-        );
-
-  @override
   Map<String, dynamic> toJson() => {
         "up": up,
         "down": down,
         "score": score,
-        "total": total,
         "our_score": ourScore,
       };
-
-  @override
-  UpdatedScore copyWith({
-    int? up,
-    int? down,
-    int? score,
-    int? total,
-    int? ourScore,
-  }) =>
-      UpdatedScore(
-        up: up ?? this.up,
-        down: down ?? this.down,
-        score: score ?? total ?? this.score,
-        ourScore: ourScore ?? this.ourScore,
-      );
-  static int determineOurTrueScore(int castVote, int ourScore, bool noUnvote) {
-    if (noUnvote) {
-      if (castVote > 0 && ourScore >= 0) {
-        return 1;
-      } else if (castVote < 0 && ourScore <= 0) {
-        return -1;
-      } else {
-        return ourScore;
-      }
-    } else {
-      return ourScore;
-    }
-  }
 }
 
-class PostTags {
-  /// A JSON array of all the general tags on the post.
-  final List<String> general;
-
-  /// A JSON array of all the species tags on the post.
-  final List<String> species;
-
-  /// A JSON array of all the character tags on the post.
-  final List<String> character;
-
-  /// A JSON array of all the artist tags on the post.
-  final List<String> artist;
-
-  /// A JSON array of all the invalid tags on the post.
-  final List<String> invalid;
-
-  /// A JSON array of all the lore tags on the post.
-  final List<String> lore;
-
-  /// A JSON array of all the meta tags on the post.
-  final List<String> meta;
-
-  // #region Undocumented
-  /// A JSON array of all the copyright tags on the post.
-  final List<String> copyright;
-  // #endregion Undocumented
-
-  List<String> getByCategory(TagCategory c) =>
-      getByCategorySafe(c) ??
-      (throw ArgumentError.value(c, "c", "Can't be TagCategory._error"));
-  List<String>? getByCategorySafe(TagCategory c) => switch (c) {
-        TagCategory.general => general,
-        TagCategory.species => species,
-        TagCategory.character => character,
-        TagCategory.artist => artist,
-        TagCategory.invalid => invalid,
-        TagCategory.lore => lore,
-        TagCategory.meta => meta,
-        TagCategory.copyright => copyright,
-        _ => null,
-      };
-
-  const PostTags({
-    required this.general,
-    required this.species,
-    required this.character,
-    required this.artist,
-    required this.invalid,
-    required this.lore,
-    required this.meta,
-    required this.copyright,
-  });
-  factory PostTags.fromJson(Map<String, dynamic> json) => PostTags(
-        general: (json["general"] as List).cast<String>(),
-        species: (json["species"] as List).cast<String>(),
-        character: (json["character"] as List).cast<String>(),
-        artist: (json["artist"] as List).cast<String>(),
-        invalid: (json["invalid"] as List).cast<String>(),
-        lore: (json["lore"] as List).cast<String>(),
-        meta: (json["meta"] as List).cast<String>(),
-        copyright: (json["copyright"] as List).cast<String>(),
-      );
-
-  Map<String, dynamic> toJson() => {
-        "general": List<dynamic>.from(general.map((x) => x)),
-        "species": List<dynamic>.from(species.map((x) => x)),
-        "character": List<dynamic>.from(character.map((x) => x)),
-        "artist": List<dynamic>.from(artist.map((x) => x)),
-        "invalid": List<dynamic>.from(invalid.map((x) => x)),
-        "lore": List<dynamic>.from(lore.map((x) => x)),
-        "meta": List<dynamic>.from(meta.map((x) => x)),
-        "copyright": List<dynamic>.from(copyright.map((x) => x)),
-      };
-}
-
-class PostFlags {
-  /// If the post is pending approval. (True/False)
-  final bool pending;
-
-  /// If the post is flagged for deletion. (True/False)
-  final bool flagged;
-
-  /// If the post has it’s notes locked. (True/False)
-  final bool noteLocked;
-
-  /// If the post’s status has been locked. (True/False)
-  final bool statusLocked;
-
-  /// If the post’s rating has been locked. (True/False)
-  final bool ratingLocked;
-
-  /// If the post has been deleted. (True/False)
-  final bool deleted;
-
-  const PostFlags({
-    required this.pending,
-    required this.flagged,
-    required this.noteLocked,
-    required this.statusLocked,
-    required this.ratingLocked,
-    required this.deleted,
-  });
-  factory PostFlags.fromJson(Map<String, dynamic> json) => PostFlags(
-        pending: json["pending"] as bool,
-        flagged: json["flagged"] as bool,
-        noteLocked: json["note_locked"] as bool,
-        statusLocked: json["status_locked"] as bool,
-        ratingLocked: json["rating_locked"] as bool,
-        deleted: json["deleted"] as bool,
-      );
-}
-
-enum PostFlag {
-  /// int.parse("000001", radix: 2);
-  pending(bit: 1),
-
-  /// int.parse("000010", radix: 2);
-  flagged(bit: 2),
-
-  /// int.parse("000100", radix: 2);
-  noteLocked(bit: 4),
-
-  /// int.parse("001000", radix: 2);
-  statusLocked(bit: 8),
-
-  /// int.parse("010000", radix: 2);
-  ratingLocked(bit: 16),
-
-  /// int.parse("100000", radix: 2);
-  deleted(bit: 32);
-
-  final int bit;
-  const PostFlag({required this.bit});
-
-  /// int.parse("000001", radix: 2);
-  static const int pendingFlag = 1;
-
-  /// int.parse("000010", radix: 2);
-  static const int flaggedFlag = 2;
-
-  /// int.parse("000100", radix: 2);
-  static const int noteLockedFlag = 4;
-
-  /// int.parse("001000", radix: 2);
-  static const int statusLockedFlag = 8;
-
-  /// int.parse("010000", radix: 2);
-  static const int ratingLockedFlag = 16;
-
-  /// int.parse("100000", radix: 2);
-  static const int deletedFlag = 32;
-  static int toInt(PostFlag f) => f.bit;
-  static List<PostFlag> getFlags(int f) {
-    var l = <PostFlag>[];
-    if (f & pending.bit == pending.bit) l.add(pending);
-    if (f & flagged.bit == flagged.bit) l.add(flagged);
-    if (f & noteLocked.bit == noteLocked.bit) l.add(noteLocked);
-    if (f & statusLocked.bit == statusLocked.bit) l.add(statusLocked);
-    if (f & ratingLocked.bit == ratingLocked.bit) l.add(ratingLocked);
-    if (f & deleted.bit == deleted.bit) l.add(deleted);
-    return l;
-  }
-
-  bool hasFlag(int f) => (PostFlag.toInt(this) & f) == PostFlag.toInt(this);
-}
-
-class PostBitFlags implements PostFlags {
-  @override
-  bool get pending => (_data & pendingFlag) == pendingFlag;
-
-  @override
-  bool get flagged => (_data & flaggedFlag) == flaggedFlag;
-
-  @override
-  bool get noteLocked => (_data & noteLockedFlag) == noteLockedFlag;
-
-  @override
-  bool get statusLocked => (_data & statusLockedFlag) == statusLockedFlag;
-
-  @override
-  bool get ratingLocked => (_data & ratingLockedFlag) == ratingLockedFlag;
-
-  @override
-  bool get deleted => (_data & deletedFlag) == deletedFlag;
-  final int _data;
-  PostBitFlags({
-    required bool pending,
-    required bool flagged,
-    required bool noteLocked,
-    required bool statusLocked,
-    required bool ratingLocked,
-    required bool deleted,
-  }) : _data = (pending ? pendingFlag : 0) +
-            (flagged ? flaggedFlag : 0) +
-            (noteLocked ? noteLockedFlag : 0) +
-            (statusLocked ? statusLockedFlag : 0) +
-            (ratingLocked ? ratingLockedFlag : 0) +
-            (deleted ? deletedFlag : 0);
-  factory PostBitFlags.fromJson(Map<String, dynamic> json) => PostBitFlags(
-        pending: json["pending"] as bool,
-        flagged: json["flagged"] as bool,
-        noteLocked: json["note_locked"] as bool,
-        statusLocked: json["status_locked"] as bool,
-        ratingLocked: json["rating_locked"] as bool,
-        deleted: json["deleted"] as bool,
-      );
-  static int getValue({
-    bool pending = false,
-    bool flagged = false,
-    bool noteLocked = false,
-    bool statusLocked = false,
-    bool ratingLocked = false,
-    bool deleted = false,
-  }) =>
-      (pending ? pendingFlag : 0) +
-      (flagged ? flaggedFlag : 0) +
-      (noteLocked ? noteLockedFlag : 0) +
-      (statusLocked ? statusLockedFlag : 0) +
-      (ratingLocked ? ratingLockedFlag : 0) +
-      (deleted ? deletedFlag : 0);
-
-  static const int pendingFlag = 1; //int.parse("000001", radix: 2);
-  static const int flaggedFlag = 2; //int.parse("000010", radix: 2);
-  static const int noteLockedFlag = 4; //int.parse("000100", radix: 2);
-  static const int statusLockedFlag = 8; //int.parse("001000", radix: 2);
-  static const int ratingLockedFlag = 16; //int.parse("010000", radix: 2);
-  static const int deletedFlag = 32; //int.parse("100000", radix: 2);
-}
-
-class PostRelationships {
-  /// The ID of the post’s parent, if it has one.
-  final int? parentId;
-
-  /// If the post has child posts (True/False)
-  final bool hasChildren;
-
-  /// If the post has active child posts (True/False)
-  ///
-  /// J's Note: I assume "active" means not deleted
-  final bool hasActiveChildren;
-
-  /// A list of child post IDs that are linked to the post, if it has any.
-  final List<int> children;
-
-  bool get hasParent => parentId != null;
-
-  const PostRelationships({
-    required this.parentId,
-    required this.hasChildren,
-    required this.hasActiveChildren,
-    required this.children,
-  });
-  factory PostRelationships.fromJson(Map<String, dynamic> json) =>
-      PostRelationships(
-        parentId: json["parent_id"] as int?,
-        hasChildren: json["has_children"] as bool,
-        hasActiveChildren: json["has_active_children"] as bool,
-        children: (json["children"] as List).cast<int>(),
-      );
-}
-
-class Alternates {
-  // Alternate? the480P;
-  // Alternate? the720P;
-  Alternate? original;
-  Map<String, Alternate> alternates;
-
-  Alternates({
-    // this.the480P,
-    // this.the720P,
-    Alternate? original,
-    required this.alternates,
-  }) : original = original ?? alternates["original"];
-
-  factory Alternates.fromJson(Map<String, dynamic> json) => Alternates(
-        // the480P: json["480p"] == null ? null : Alternate.fromJson(json["480p"]),
-        // the720P: json["720p"] == null ? null : Alternate.fromJson(json["720p"]),
-        original: json["original"] == null
-            ? null
-            : Alternate.fromJson(json["original"]),
-        alternates: {
-          for (var e in json.entries) e.key: Alternate.fromJson(e.value)
-        },
-      );
-
-  // Map<String, dynamic> toJson() => {
-  //       "480p": the480P?.toJson(),
-  //       "720p": the720P?.toJson(),
-  //       "original": original?.toJson(),
-  //     };
-  Map<String, dynamic> toJson() => alternates;
-}
-
-class Alternate {
-  int height;
-  String type;
-
-  /// 0. the webm version (almost always null on original)
-  /// 1. the mp4 version
-  List<String?> urls;
-  int width;
-
-  Alternate({
-    required this.height,
-    required this.type,
-    required this.urls,
-    required this.width,
-  });
-
-  factory Alternate.fromJson(Map<String, dynamic> json) => Alternate(
-        height: json["height"],
-        type: json["type"],
-        urls: List<String?>.from(json["urls"].map((x) => x)),
-        width: json["width"],
-      );
-
-  Map<String, dynamic> toJson() => {
-        "height": height,
-        "type": type,
-        "urls": List<dynamic>.from(urls.map((x) => x)),
-        "width": width,
-      };
-}
-
-enum AlternateResolution {
-  $720p(1280, 720),
-  $480p(640, 480),
-  original(double.infinity, double.infinity);
-
-  final num maxVerticalResolution;
-  final num maxHorizontalResolution;
-  const AlternateResolution(
-      this.maxHorizontalResolution, this.maxVerticalResolution);
-  factory AlternateResolution.fromJson(String json) => switch (json) {
-        "720p" => $720p,
-        "480p" => $480p,
-        "original" => original,
-        _ => throw ArgumentError.value(
-            json,
-            "json",
-            "must be "
-                "720p, "
-                "480p, "
-                "or original"),
-      };
-  @override
-  String toString() => switch (this) {
-        $720p => "720p",
-        $480p => "480p",
-        original => "original",
-      };
-  static const AlternateResolution nhd = $480p;
-  static const AlternateResolution sd = $480p;
-  static const AlternateResolution vga = $480p;
-  static const AlternateResolution hd = $720p;
-  static const AlternateResolution hdtv = $720p;
-  static const AlternateResolution wxga = $720p;
-}
-
-enum PostDataType {
-  png,
-  jpg,
-  gif,
-  webm,
-  mp4,
-  swf;
-
-  bool isResourceOfDataType(String url) =>
-      url.endsWith(toString()) ||
-      (this == PostDataType.jpg && url.endsWith("jpeg"));
-}
-
-enum PostType {
-  image,
-  video,
-  flash,
-  ;
-}
-
-class WikiPage {
-  final int id;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+class WikiPage extends _PIdDatesBase {
   final String title;
   final String body;
   final int creatorId;
@@ -2653,10 +3442,10 @@ class WikiPage {
   final String creatorName;
   final int categoryId;
 
-  WikiPage({
-    required this.id,
-    required this.createdAt,
-    required this.updatedAt,
+  const WikiPage({
+    required super.id,
+    required super.createdAt,
+    required super.updatedAt,
     required this.title,
     required this.body,
     required this.creatorId,
@@ -2668,590 +3457,102 @@ class WikiPage {
     required this.creatorName,
     required this.categoryId,
   });
-  Map<String, dynamic> toJson() => {
-        "id": id,
-        "created_at": createdAt,
-        "updated_at": updatedAt,
-        "title": title,
-        "body": body,
-        "creator_id": creatorId,
-        "is_locked": isLocked,
-        "updater_id": updaterId,
-        "is_deleted": isDeleted,
-        "other_names": otherNames,
-        "parent": parent,
-        "creator_name": creatorName,
-        "category_id": categoryId,
-      };
-  factory WikiPage.fromJson(Map<String, dynamic> json) => WikiPage(
-        id: json["id"],
-        createdAt: DateTime.parse(json["created_at"]),
-        updatedAt: DateTime.parse(json["updated_at"]),
-        title: json["title"],
-        body: json["body"],
-        creatorId: json["creator_id"],
-        isLocked: json["is_locked"],
-        updaterId: json["updater_id"],
-        isDeleted: json["is_deleted"],
-        otherNames: (json["other_names"] as List).cast<String>(),
-        parent: json["parent"],
-        creatorName: json["creator_name"],
-        categoryId: json["category_id"],
-      );
-
+  WikiPage.fromJson(super.json)
+      : title = json["title"],
+        body = json["body"],
+        creatorId = json["creator_id"],
+        isLocked = json["is_locked"],
+        updaterId = json["updater_id"],
+        isDeleted = json["is_deleted"],
+        otherNames = (json["other_names"] as List).cast<String>(),
+        parent = json["parent"],
+        creatorName = json["creator_name"],
+        categoryId = json["category_id"],
+        super.fromJson();
   factory WikiPage.fromRawJson(String json) {
     final r = dc.jsonDecode(json);
     return WikiPage.fromJson(r is List ? r.first : r);
   }
+  @override
+  Map<String, dynamic> toJson() => super.toJson()
+    ..addAll({
+      "title": title,
+      "body": body,
+      "creator_id": creatorId,
+      "is_locked": isLocked,
+      "updater_id": updaterId,
+      "is_deleted": isDeleted,
+      "other_names": otherNames,
+      "parent": parent,
+      "creator_name": creatorName,
+      "category_id": categoryId,
+    });
+
   static Iterable<WikiPage> fromRawJsonResults(String json) {
     final r = dc.jsonDecode(json);
     return r is List
         ? r.map((e) => WikiPage.fromJson(e))
         : [WikiPage.fromJson(r)];
   }
-
-  Map<String, dynamic> fromJson() => {
-        "id": id,
-        "created_at": createdAt,
-        "updated_at": updatedAt,
-        "title": title,
-        "body": body,
-        "creator_id": creatorId,
-        "is_locked": isLocked,
-        "updater_id": updaterId,
-        "is_deleted": isDeleted,
-        "other_names": otherNames,
-        "parent": parent,
-        "creator_name": creatorName,
-        "category_id": categoryId,
-      };
 }
 
-/// Database files contain upwards of a million entries. In cases where the
-/// [TagDbEntry.id] is not important, this class may be used to minimize the
-/// memory and performance cost of parsing and storing a large number of entries.
-class TagDbEntrySlim implements Comparable<TagDbEntrySlim> {
-  /// <tag display name>,
-  final String name;
-
-  /// <numeric category id>,
-  final TagCategory category;
-
-  /// <# matching visible posts>,
-  final int postCount;
-
-  const TagDbEntrySlim({
-    required this.name,
-    required this.category,
-    required this.postCount,
-  });
-  TagDbEntrySlim.fromJson(Map<String, dynamic> json)
-      : name = json["name"] as String,
-        category = json["category"] as TagCategory,
-        postCount = json["post_count"] as int;
-  Map<String, dynamic> toJson() => {
-        "name": name,
-        "category": category.index,
-        "post_count": postCount,
-      };
-  TagDbEntrySlim.fromCsv(String csv)
-      : name = csv.contains('"')
-            ? csv.substring(csv.indexOf('"'), csv.lastIndexOf('"') + 1)
-            : csv.split(",")[1],
-        category = TagCategory.values[int.parse(csv.contains('"')
-            ? csv.split(",")[csv.split(",").length - 2]
-            : csv.split(",")[2])],
-        postCount = int.parse(csv.split(",").last);
-  static const csvHeader = "id,name,category,post_count";
-
-  /// Database archives have upwards of a million entries. Use Flutter's
-  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
-  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
-  static List<TagDbEntrySlim> parseCsv(String csv) => (csv.split("\n")
-        ..removeAt(0)
-        ..removeLast())
-      .map(TagDbEntrySlim.fromCsv)
-      .toList();
-  @override
-  int compareTo(TagDbEntrySlim other) => other.postCount - postCount;
-  // int compareTo(TagDbEntrySlim other) =>
-  //     (other.postCount - (other.postCount % 5)) - (postCount - postCount % 5);
-  static List<String> rootParse(String e) {
-    var t = e.split(",");
-    if (e.contains('"')) {
-      t = [
-        t[0],
-        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
-        t[t.length - 2],
-        t.last
-      ];
-    }
-    // if (t.length == 5) t = [t[0], t[1] + t[2], t[3], t[4]];
-    if (t.length == 5) throw StateError("Shouldn't be possible");
-    return t;
-  }
-}
-
-/* class TagDbEntry implements TagDbEntrySlim {
-  /// <numeric tag id>,
+abstract interface class _PIdDatesBase with model.BaseModel {
+  /// The ID number of the item.
   final int id;
 
-  /// <tag display name>,
-  @override
-  final String name;
-
-  /// <numeric category id>,
-  @override
-  final TagCategory category;
-
-  /// <# matching visible posts>,
-  @override
-  final int postCount;
-
-  const TagDbEntry({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.postCount,
-  });
-  TagDbEntry.fromJson(Map<String, dynamic> json)
-      : id = json["id"] as int,
-        name = json["name"] as String,
-        category = json["category"] as TagCategory,
-        postCount = json["post_count"] as int;
-  @override
-  Map<String, dynamic> toJson() => {
-        "id": id,
-        "name": name,
-        "category": category.index,
-        "post_count": postCount,
-      };
-  TagDbEntry.fromCsv(String csv)
-      : id = int.parse(csv.split(",").first),
-        name = csv.contains('"')
-            ? csv.substring(csv.indexOf('"'), csv.lastIndexOf('"') + 1)
-            : csv.split(",")[1],
-        category = TagCategory.values[int.parse(csv.contains('"')
-            ? csv.split(",")[csv.split(",").length - 2]
-            : csv.split(",")[2])],
-        postCount = int.parse(csv.split(",").last);
-  String toCsv() => "$id,$name,${category.index},$postCount";
-  static const csvHeader = "id,name,category,post_count";
-
-  /// Database archives have upwards of a million entries. Use Flutter's
-  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
-  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
-  static List<TagDbEntry> parseCsv(String csv) => (csv.split("\n")
-        ..removeAt(0)
-        ..removeLast())
-      .map(TagDbEntry.fromCsv)
-      .toList();
-  static List<String> rootParse(String e) {
-    var t = e.split(",");
-    if (e.contains('"')) {
-      t = [
-        t[0],
-        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
-        t[t.length - 2],
-        t.last
-      ];
-    }
-    // if (t.length == 5) t = [t[0], t[1] + t[2], t[3], t[4]];
-    if (t.length == 5) throw StateError("Shouldn't be possible");
-    return t;
-  }
-} */
-class TagDbEntry extends TagDbEntrySlim {
-  /// <numeric tag id>,
-  final int id;
-
-  const TagDbEntry({
-    required this.id,
-    required super.name,
-    required super.category,
-    required super.postCount,
-  });
-  TagDbEntry.fromJson(super.json)
-      : id = json["id"] as int,
-        super.fromJson();
-  @override
-  Map<String, dynamic> toJson() => super.toJson()..addAll({"id": id});
-  TagDbEntry.fromCsv(super.csv)
-      : id = int.parse(csv.split(",").first),
-        super.fromCsv();
-  String toCsv() => "$id,$name,${category.index},$postCount";
-  static const csvHeader = "id,name,category,post_count";
-
-  /// Database archives have upwards of a million entries. Use Flutter's
-  /// [compute](https://api.flutter.dev/flutter/foundation/compute.html) or
-  /// [Isolate.run](https://api.flutter.dev/flutter/dart-isolate/Isolate/run.html).
-  static List<TagDbEntry> parseCsv(String csv) => (csv.split("\n")
-        ..removeAt(0)
-        ..removeLast())
-      .map(TagDbEntry.fromCsv)
-      .toList();
-
-  static List<String> rootParse(String e) {
-    var t = e.split(",");
-    if (e.contains('"')) {
-      t = [
-        t[0],
-        e.substring(e.indexOf('"'), e.lastIndexOf('"') + 1),
-        t[t.length - 2],
-        t.last
-      ];
-    }
-    if (t.length == 5) throw StateError("Shouldn't be possible");
-    return t;
-  }
-}
-
-/// https://e621.wiki/#operations-Tags-searchTags
-class Tag extends TagDbEntry {
-  // /// <numeric tag id>,
-  // final int id;
-
-  // /// <tag display name>,
-  // final String name;
-
-  // /// <# matching visible posts>,
-  // final int postCount;
-
-  /// <space-delimited list of tags>,???
-  final List<String> relatedTags;
-
-  /// <ISO8601 timestamp>,
-  final DateTime? relatedTagsUpdatedAt;
-
-  // /// <numeric category id>,
-  // final TagCategory category;
-
-  /// <boolean>,
-  final bool isLocked;
-
-  /// <ISO8601 timestamp>,
+  /// The time the item was created in the format of YYYY-MM-DDTHH:MM:SS.MS+00:00.
   final DateTime createdAt;
 
-  /// <ISO8601 timestamp>
+  /// The time the item was last updated in the format of YYYY-MM-DDTHH:MM:SS.MS+00:00.
   final DateTime updatedAt;
+  const _PIdDatesBase({
+    required this.id,
+    required this.createdAt,
+    required this.updatedAt,
+  });
 
-  const Tag({
+  _PIdDatesBase.fromJson(Map<String, dynamic> json)
+      : id = json["id"],
+        createdAt = DateTime.parse(json["created_at"]),
+        updatedAt = DateTime.parse(json["updated_at"]);
+  @override
+  Map<String, dynamic> toJson() => {
+        "id": id,
+        "created_at": createdAt.toIso8601String(),
+        "updated_at": updatedAt.toIso8601String(),
+      };
+}
+
+abstract interface class _PNameIdDatesBase extends _PIdDatesBase {
+  final String name;
+  const _PNameIdDatesBase({
+    required this.name,
     required super.id,
-    required super.name,
-    required super.postCount,
-    required this.relatedTags,
-    required this.relatedTagsUpdatedAt,
-    required super.category,
-    required this.isLocked,
-    required this.createdAt,
-    required this.updatedAt,
+    required super.createdAt,
+    required super.updatedAt,
   });
-  Tag.fromJson(super.json)
-      : relatedTags = (json["related_tags"] as List).cast<String>(),
-        relatedTagsUpdatedAt = json["related_tags_updated_at"] as DateTime?,
-        isLocked = json["is_locked"] as bool,
-        createdAt = json["created_at"] as DateTime,
-        updatedAt = json["updated_at"] as DateTime,
+
+  _PNameIdDatesBase.fromJson(super.json)
+      : name = json["name"],
         super.fromJson();
   @override
-  Map<String, dynamic> toJson() => super.toJson()
-    ..addAll({
-      // "id": id,
-      // "name": name,
-      // "post_count": postCount,
-      "related_tags": relatedTags,
-      "related_tags_updated_at": relatedTagsUpdatedAt,
-      // "category": category.index,
-      "is_locked": isLocked,
-      "created_at": createdAt,
-      "updated_at": updatedAt,
-    });
+  Map<String, dynamic> toJson() => super.toJson()..addAll({"name": name});
 }
 
-class Comment {
-  /// id
-  final int id;
+abstract interface class _PNameIdDatesIsActiveBase extends _PNameIdDatesBase {
+  final bool isActive;
+  const _PNameIdDatesIsActiveBase({
+    required super.name,
+    required super.id,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.isActive,
+  }) : super();
 
-  /// created_at
-  final DateTime createdAt;
-
-  /// post_id
-  final int postId;
-
-  /// creator_id
-  final int creatorId;
-
-  /// body
-  final String body;
-
-  /// score
-  final int score;
-
-  /// updated_at
-  final DateTime updatedAt;
-
-  /// updater_id
-  final int updaterId;
-
-  /// do_not_bump_post
-  final bool? /* deprecated */ doNotBumpPost;
-
-  /// is_hidden
-  final bool isHidden;
-
-  /// is_sticky
-  final bool isSticky;
-
-  /// warning_type
-  ///
-  /// MUST NOT BE [WarningType.unmark]
-  final WarningType? warningType;
-
-  /// warning_user_id
-  final int? warningUserId;
-
-  /// creator_name
-  final String creatorName;
-
-  /// updater_name
-  final String updaterName;
-
-  const Comment({
-    required this.id,
-    required this.createdAt,
-    required this.postId,
-    required this.creatorId,
-    required this.body,
-    required this.score,
-    required this.updatedAt,
-    required this.updaterId,
-    required this.doNotBumpPost,
-    required this.isHidden,
-    required this.isSticky,
-    required this.warningType,
-    required this.warningUserId,
-    required this.creatorName,
-    required this.updaterName,
-  });
-
-  Comment.fromJson(Map<String, dynamic> json)
-      : id = json["id"],
-        createdAt = DateTime.parse(json["created_at"]),
-        postId = json["post_id"],
-        creatorId = json["creator_id"],
-        body = json["body"],
-        score = json["score"],
-        updatedAt = DateTime.parse(json["updated_at"]),
-        updaterId = json["updater_id"],
-        doNotBumpPost = json["do_not_bump_post"],
-        isHidden = json["is_hidden"],
-        isSticky = json["is_sticky"],
-        warningType = json["warning_type"] != null
-            ? WarningType(json["warning_type"])
-            : null,
-        warningUserId = json["warning_user_id"],
-        creatorName = json["creator_name"],
-        updaterName = json["updater_name"];
-  factory Comment.fromRawJson(String json) {
-    final r = dc.jsonDecode(json);
-    return Comment.fromJson(r is List ? r.first : r);
-  }
-  static Iterable<Comment> fromRawJsonResults(String json) {
-    final r = dc.jsonDecode(json);
-    return r is List
-        ? r.map((e) => Comment.fromJson(e))
-        : r["comments"] == null
-            ? [Comment.fromJson(r)]
-            : (r["comments"] as List).map((e) => Comment.fromJson(e));
-  }
-
-  Map<String, dynamic> toJson() => {
-        "id": id,
-        "created_at": createdAt,
-        "post_id": postId,
-        "creator_id": creatorId,
-        "body": body,
-        "score": score,
-        "updated_at": updatedAt,
-        "updater_id": updaterId,
-        "do_not_bump_post": doNotBumpPost,
-        "is_hidden": isHidden,
-        "is_sticky": isSticky,
-        "warning_type": warningType?.query,
-        "warning_user_id": warningUserId,
-        "creator_name": creatorName,
-        "updater_name": updaterName,
-      };
-}
-
-class DTextResponse {
-  final String html;
-  final Map<int, DTextPost> posts;
-
-  const DTextResponse({required this.html, required this.posts});
-
-  DTextResponse.fromJson(Map<String, dynamic> json)
-      : html = json["html"],
-        posts = (json["posts"] as Map)
-            .map((k, v) => MapEntry(k, DTextPost.fromJson(v)));
-}
-
-class DTextPost {
-  /// id
-  final int id;
-
-  /// flags
-  final String flags;
-
-  /// tags
-  final String tags;
-
-  /// rating
-  final Rating rating;
-
-  /// file_ext
-  final String fileExt;
-
-  /// width
-  final int width;
-
-  /// height
-  final int height;
-
-  /// size
-  final int size;
-
-  /// created_at
-  final DateTime createdAt;
-
-  /// uploader
-  final String uploader;
-
-  /// uploader_id
-  final int uploaderId;
-
-  /// score
-  final int score;
-
-  /// fav_count
-  final int favCount;
-
-  /// is_favorited
-  final bool isFavorited;
-
-  /// pools
-  final List<int> pools;
-
-  /// md5
-  final String md5;
-
-  /// preview_url
-  final String? previewUrl;
-
-  /// large_url
-  final String? largeUrl;
-
-  /// file_url
-  final String? fileUrl;
-
-  /// preview_width
-  final int previewWidth;
-
-  /// preview_height
-  final int previewHeight;
-
-  const DTextPost({
-    required this.id,
-    required this.flags,
-    required this.tags,
-    required this.rating,
-    required this.fileExt,
-    required this.width,
-    required this.height,
-    required this.size,
-    required this.createdAt,
-    required this.uploader,
-    required this.uploaderId,
-    required this.score,
-    required this.favCount,
-    required this.isFavorited,
-    required this.pools,
-    required this.md5,
-    required this.previewUrl,
-    required this.largeUrl,
-    required this.fileUrl,
-    required this.previewWidth,
-    required this.previewHeight,
-  });
-
-  DTextPost.fromJson(Map<String, dynamic> json)
-      : id = json["id"],
-        flags = json["flags"],
-        tags = json["tags"],
-        rating = Rating.fromTagText(json["rating"]),
-        fileExt = json["file_ext"],
-        width = json["width"],
-        height = json["height"],
-        size = json["size"],
-        createdAt = DateTime.parse(json["created_at"]),
-        uploader = json["uploader"],
-        uploaderId = json["uploader_id"],
-        score = json["score"],
-        favCount = json["fav_count"],
-        isFavorited = json["is_favorited"],
-        pools = (json["pools"] as List).cast<int>(),
-        md5 = json["md5"],
-        previewUrl = json["preview_url"],
-        largeUrl = json["large_url"],
-        fileUrl = json["file_url"],
-        previewWidth = json["preview_width"],
-        previewHeight = json["preview_height"];
-  Map<String, dynamic> toJson() => {
-        "id": id,
-        "flags": flags,
-        "tags": tags,
-        "rating": rating.suffixShort,
-        "file_ext": fileExt,
-        "width": width,
-        "height": height,
-        "size": size,
-        "created_at": createdAt,
-        "uploader": uploader,
-        "uploader_id": uploaderId,
-        "score": score,
-        "fav_count": favCount,
-        "is_favorited": isFavorited,
-        "pools": pools,
-        "md5": md5,
-        "preview_url": previewUrl,
-        "large_url": largeUrl,
-        "file_url": fileUrl,
-        "preview_width": previewWidth,
-        "preview_height": previewHeight,
-      };
-}
-
-class ModifiablePostSets {
-  final List<({String name, int id})> owned;
-  final List<({String name, int id})> maintained;
-  List<({String name, int id})> get all => owned + maintained;
-
-  const ModifiablePostSets({required this.owned, required this.maintained});
-
-  ModifiablePostSets.fromJson(Map<String, dynamic> json)
-      : maintained = (json["Maintained"] as List)
-            .map<({String name, int id})>(
-                (e) => (name: (e as List).first, id: e.last))
-            .toList(),
-        owned = (json["Owned"] as List)
-            .map<({String name, int id})>(
-                (e) => (name: (e as List).first, id: e.last))
-            .toList();
-  factory ModifiablePostSets.fromRawJson(String json) =>
-      ModifiablePostSets.fromJson(dc.jsonDecode(json));
-  Map<String, dynamic> toJson() => {
-        "maintained": maintained.map(elementToJson),
-        "owned": owned.map(elementToJson),
-      };
-  static List elementToJson(({String name, int id}) e) => [e.name, e.id];
+  _PNameIdDatesIsActiveBase.fromJson(super.json)
+      : isActive = json["isActive"],
+        super.fromJson();
+  @override
+  Map<String, dynamic> toJson() =>
+      super.toJson()..addAll({"is_active": isActive});
 }

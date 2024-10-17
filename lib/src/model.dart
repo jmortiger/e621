@@ -6,6 +6,41 @@ mixin BaseModel {
 
   String toRawJson() => dc.json.encode(toJson());
 }
+
+/// The shared elements of [PostSet] and [Pool].
+mixin PostCollection<T extends PostCollection<T>> on BaseModel {
+  /// The ID of the collection.
+  int get id;
+
+  /// The name of the collection.
+  String get name;
+
+  /// The time the collection was created in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
+  DateTime get createdAt;
+
+  /// The time the collection was updated in the format of `YYYY-MM-DDTHH:MM:SS.MS+00:00`.
+  DateTime get updatedAt;
+
+  /// The ID of the user that created the collection.
+  int get creatorId;
+
+  /// The amount of posts in the collection.
+  int get postCount;
+
+  /// An array group of posts in the collection.
+  List<int> get postIds;
+
+  PostCollection<T> copyWith({
+    int? id,
+    String? name,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? creatorId,
+    String? description,
+    List<int>? postIds,
+    int? postCount,
+  });
+}
 typedef RecordPool = ({
   int id,
   String name,

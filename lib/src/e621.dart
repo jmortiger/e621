@@ -11,6 +11,7 @@ const hostNameNsfw = "e621.net";
 final baseUriSfw = Uri.https(hostNameSfw);
 final baseUriNsfw = Uri.https(hostNameNsfw);
 Uri get baseUri => useNsfw ? baseUriNsfw : baseUriSfw;
+String get baseHostName => useNsfw ? hostNameNsfw : hostNameSfw;
 
 /// If `true`, the host used will be `e621.net`; otherwise,
 /// it will be `e926.net`.
@@ -18,10 +19,13 @@ bool useNsfw = true;
 // #endregion URI
 
 const maxPageNumber = 750;
-const maxPostsPerSearch = 320;
+@Deprecated("Use maxPostSearchLimit")
+const maxPostsPerSearch = maxPostSearchLimit;
+/// The maximum value allowed for the limit parameter for a [initPostSearch].
+const maxPostSearchLimit = 320;
 
 /// If searching by page number, the max amount of posts that can be accessed.
-const maxPostsPerSearchByPageNumber = maxPageNumber * maxPostsPerSearch;
+const maxPostsPerSearchByPageNumber = maxPageNumber * maxPostSearchLimit;
 const maxTagsPerSearch = 40;
 
 // #region Credentials
@@ -69,6 +73,7 @@ Map<String, String> _addUserAgentTo(
                     ? activeCredentials!.addToTyped(headers)
                     : headers;
 
+// #region Base Init
 http.Request _baseInitRequestCredentialsRequired({
   required String path,
   required String method,
@@ -154,12 +159,13 @@ http.MultipartRequest _baseInitMultipartRequestCredentialsOptional({
   }
   return req;
 }
+// #endregion Base Init
 
 /// [lowerBound] is inclusive, [upperBound] is exclusive.
 int _validateLimit(
   int limit, {
   int lowerBound = 1,
-  int upperBound = maxPostsPerSearch + 1,
+  int upperBound = maxPostSearchLimit + 1,
   int valueIfFalse = 75,
 }) =>
     (limit >= lowerBound && limit < upperBound) ? limit : valueIfFalse;
@@ -199,6 +205,75 @@ String foldIterableForUrl(Iterable i, {bool allowEmpty = true}) =>
             .fold("", (acc, e) => "$acc +$e")
             .trimLeft()
         : " ";
+
+// #region Query Helpers
+Map<String, dynamic>? _prepareQueryParametersSafe(
+  Map<String, dynamic>? qp, {
+  String? defaultSeparator,
+  Map<String, String>? joinMap,
+}) =>
+    qp
+      ?..updateAll((k, v) {
+        dynamic recurse(val) => switch (val) {
+              String v1 => v1,
+              Iterable v1 when (joinMap?[k] ?? _doNotJoin) != _doNotJoin =>
+                v1.map(recurse).join(joinMap![k]!),
+              Iterable v1 when defaultSeparator != null =>
+                v1.map(recurse).join(defaultSeparator),
+              Iterable v1 => v1.map(recurse),
+              ge.ApiQueryParameter _ => val.query,
+              _ => val.toString(),
+            };
+        return recurse(v);
+      });
+const _doNotJoin = "DON'T JOIN";
+const Map<String, String> _joinMap = {
+  "search[antecedent_tag_category]": ",",
+  "search[consequent_tag_category]": ",",
+  "user[favorite_tags]": " ",
+  "user[blacklisted_tags]": " ",
+};
+
+/* final class IterableOrSingle<T> {
+  final T? single;
+  final Iterable<T>? iterable;
+
+  const IterableOrSingle.single(T this.single) : iterable = null;
+  const IterableOrSingle.iterable(Iterable<T> this.iterable) : single = null;
+  IterableOrSingle.iterableChecked(Iterable<T> iterable)
+      : single = null,
+        iterable = iterable.isNotEmpty
+            ? iterable
+            : throw ArgumentError.value(
+                iterable, "iterable", "Must not be empty");
+  IterableOrSingle.checked({this.single, this.iterable}) {
+    if (single == null && (iterable?.isEmpty ?? true)) {
+      throw ArgumentError.value((single, iterable), "(single, iterable)",
+          "Must be at least 1 value between iterable and single");
+    }
+  }
+
+  String join({
+    String separator = "",
+    String Function(T)? toString,
+  }) =>
+      toString == null
+          ? (iterable?.isNotEmpty ?? false)
+              ? (single != null
+                      ? iterable!.followedBy([single as T])
+                      : iterable!)
+                  .join(separator)
+              : single.toString()
+          : (iterable?.isNotEmpty ?? false)
+              ? (single != null
+                      ? iterable!.followedBy([single as T])
+                      : iterable!)
+                  .map((e) => toString(e))
+                  .join(separator)
+              : toString(single as T);
+}
+ */
+// #endregion Query Helpers
 // #endregion Helpers
 
 // TODO: Make naming conventions consistent.
@@ -1845,8 +1920,8 @@ http.Request initUserEdit({
 /// * `search[creator_id]` Must be a user id
 /// * `search[order]`
 /// * `maintainer_id` A user with permissions to add and remove posts from the set; Must be a user id.
-/// * limit How many items you want to retrieve. There is a hard limit of 320 items per request. Defaults to 75.
-/// * page The page that will be returned. Can also be used with a or b + item_id to get the items after or before the specified item ID. For example a13 gets every item after item_id 13 up to the limit.
+/// * `limit` How many items you want to retrieve. There is a hard limit of 320 items per request. Defaults to 75.
+/// * `page` The page that will be returned. Can also be used with a or b + item_id to get the items after or before the specified item ID. For example a13 gets every item after item_id 13 up to the limit.
 http.Request initSetSearch({
   String? searchName,
   String? searchShortname,
@@ -2907,70 +2982,3 @@ http.Request initWikiGetPageRequest(
     );
 // #endregion Wiki
 // #endregion Requests
-
-Map<String, dynamic>? _prepareQueryParametersSafe(
-  Map<String, dynamic>? qp, {
-  String? defaultSeparator,
-  Map<String, String>? joinMap,
-}) =>
-    qp
-      ?..updateAll((k, v) {
-        dynamic recurse(val) => switch (val) {
-              String v1 => v1,
-              Iterable v1 when (joinMap?[k] ?? _doNotJoin) != _doNotJoin =>
-                v1.map(recurse).join(joinMap![k]!),
-              Iterable v1 when defaultSeparator != null =>
-                v1.map(recurse).join(defaultSeparator),
-              Iterable v1 => v1.map(recurse),
-              ge.ApiQueryParameter _ => val.query,
-              _ => val.toString(),
-            };
-        return recurse(v);
-      });
-const _doNotJoin = "DON'T JOIN";
-const Map<String, String> _joinMap = {
-  "search[antecedent_tag_category]": ",",
-  "search[consequent_tag_category]": ",",
-  "user[favorite_tags]": " ",
-  "user[blacklisted_tags]": " ",
-};
-
-/* final class IterableOrSingle<T> {
-  final T? single;
-  final Iterable<T>? iterable;
-
-  const IterableOrSingle.single(T this.single) : iterable = null;
-  const IterableOrSingle.iterable(Iterable<T> this.iterable) : single = null;
-  IterableOrSingle.iterableChecked(Iterable<T> iterable)
-      : single = null,
-        iterable = iterable.isNotEmpty
-            ? iterable
-            : throw ArgumentError.value(
-                iterable, "iterable", "Must not be empty");
-  IterableOrSingle.checked({this.single, this.iterable}) {
-    if (single == null && (iterable?.isEmpty ?? true)) {
-      throw ArgumentError.value((single, iterable), "(single, iterable)",
-          "Must be at least 1 value between iterable and single");
-    }
-  }
-
-  String join({
-    String separator = "",
-    String Function(T)? toString,
-  }) =>
-      toString == null
-          ? (iterable?.isNotEmpty ?? false)
-              ? (single != null
-                      ? iterable!.followedBy([single as T])
-                      : iterable!)
-                  .join(separator)
-              : single.toString()
-          : (iterable?.isNotEmpty ?? false)
-              ? (single != null
-                      ? iterable!.followedBy([single as T])
-                      : iterable!)
-                  .map((e) => toString(e))
-                  .join(separator)
-              : toString(single as T);
-}
- */
